@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订阅转换器 - Sing-box Config Generator</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+
+    <!-- Prism.js for Syntax Highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    
+    <style>
+        @keyframes slideUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+        @keyframes slideDown {
+            from { transform: translate(-50%, 0); opacity: 1; }
+            to { transform: translate(-50%, 20px); opacity: 0; }
+        }
+        .toast-show { animation: slideUp 0.3s ease-out; }
+        .toast-hide { animation: slideDown 0.3s ease-out; }
+        
+        /* 隐藏滚动条但保留滚动功能 */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Prism Line Numbers Override */
+        pre[class*="language-"].line-numbers {
+            position: relative;
+            padding-left: 3.8em;
+            counter-reset: linenumber;
+        }
+        pre[class*="language-"].line-numbers > code {
+            position: relative;
+            white-space: inherit;
+        }
+        .line-numbers .line-numbers-rows {
+            position: absolute;
+            pointer-events: none;
+            top: 0;
+            font-size: 100%;
+            left: -3.8em;
+            width: 3em; /* works for line-numbers below 1000 lines */
+            letter-spacing: -1px;
+            border-right: 1px solid #999;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        /* 强制弹窗过渡效果 */
+        .modal-content {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-950 flex items-center justify-center p-4 sm:p-10 transition-colors duration-500">
+    
+    <!-- Main Card -->
+    <div class="w-full max-w-5xl transition-all duration-500">
+        
+        <!-- Header Card -->
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-white dark:border-slate-700 overflow-hidden mb-6 transition-colors duration-300">
+            <div class="bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 dark:from-indigo-900 dark:via-blue-900 dark:to-indigo-950 p-6 sm:p-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="p-2.5 bg-white/20 rounded-xl backdrop-blur-md">
+                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl sm:text-3xl font-black text-white tracking-tight">订阅转换器</h1>
+                            <p class="text-blue-100 text-sm opacity-90 mt-0.5">高性能 Sing-box 配置文件生成工具</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Dark Mode Toggle -->
+                    <button type="button" id="darkModeBtn" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl backdrop-blur-md text-white transition-all transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/50">
+                        <!-- Sun Icon (Show in Dark Mode) -->
+                        <svg id="icon-sun" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                        <!-- Moon Icon (Show in Light Mode) -->
+                        <svg id="icon-moon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Form Card -->
+            <div class="lg:col-span-12 bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 p-6 sm:p-8 transition-colors duration-300">
+                <form id="subForm" class="space-y-6">
+                    
+                    <!-- URL Input Section -->
+                    <div>
+                        <label for="urlsInput" class="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2 uppercase tracking-wider">
+                            <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                            </svg>
+                            订阅源地址
+                        </label>
+                        <textarea 
+                            name="urls" 
+                            id="urlsInput" 
+                            rows="5"
+                            placeholder="https://example.com/subscribe?token=xxx&#10;https://another.com/api/v1/client/subscribe?token=yyy&#10;&#10;支持多行输入，每行一个链接"
+                            class="w-full px-4 py-3 border-2 border-gray-100 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 outline-none transition-all duration-300 resize-none font-mono text-sm placeholder-gray-400 dark:placeholder-slate-500 shadow-inner dark:text-gray-100"
+                        ></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
+                        <!-- Merge Option -->
+                        <div class="bg-indigo-50/50 dark:bg-indigo-900/20 border-2 border-indigo-100 dark:border-indigo-800/50 rounded-xl p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer group flex items-center">
+                            <label class="flex items-center gap-3 cursor-pointer w-full">
+                                <input 
+                                    type="checkbox" 
+                                    name="is_split" 
+                                    id="is_split" 
+                                    class="w-5 h-5 text-indigo-600 border-2 border-gray-300 dark:border-slate-500 rounded focus:ring-offset-2 focus:ring-2 focus:ring-indigo-500 transition-all duration-200 cursor-pointer bg-white dark:bg-slate-700"
+                                >
+                                <div>
+                                    <span class="text-sm font-bold text-gray-800 dark:text-gray-200 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                                        合并订阅源
+                                    </span>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">整合至单一配置</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Custom Config Option -->
+                        <div class="bg-purple-50/50 dark:bg-purple-900/20 border-2 border-purple-100 dark:border-purple-800/50 rounded-xl p-3 hover:bg-purple-50 dark:hover:bg-purple-900/40 transition-colors cursor-pointer group flex items-center" id="customConfigTrigger">
+                            <label class="flex items-center gap-3 cursor-pointer pointer-events-none w-full">
+                                <input 
+                                    type="checkbox" 
+                                    id="use_custom_config" 
+                                    class="w-5 h-5 text-purple-600 border-2 border-gray-300 dark:border-slate-500 rounded focus:ring-offset-2 focus:ring-2 focus:ring-purple-500 transition-all duration-200 bg-white dark:bg-slate-700"
+                                >
+                                <div>
+                                    <span class="text-sm font-bold text-gray-800 dark:text-gray-200 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors">
+                                        自定义配置
+                                    </span>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">编辑高级模版</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Generate Config Button -->
+                        <button 
+                            type="submit" 
+                            id="submitBtn"
+                            class="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span id="btnText">生成配置文件</span>
+                        </button>
+
+                         <!-- Generate Link Button -->
+                         <button 
+                             type="button" 
+                             id="generateLinkBtn"
+                             class="bg-white dark:bg-slate-700 border-2 border-indigo-100 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-slate-600 text-indigo-700 dark:text-indigo-300 font-bold py-3 px-4 rounded-xl shadow-sm hover:shadow-md transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                         >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                            </svg>
+                            <span>生成订阅链接</span>
+                         </button>
+                    </div>
+                </form>
+
+                <!-- Action Buttons Area (Always Visible but Disabled initially) -->
+                <div class="mt-8 pt-8 border-t border-gray-100 dark:border-slate-700">
+                    <h3 class="text-gray-700 dark:text-gray-200 font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path>
+                        </svg>
+                        文件操作
+                        <span id="statusBadge" class="ml-2 text-xs bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-0.5 rounded-full font-normal">等待生成</span>
+                    </h3>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <button 
+                            type="button"
+                            id="previewBtn"
+                            disabled
+                            class="flex-1 py-4 px-6 rounded-xl border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500 font-bold transition-all flex items-center justify-center gap-2 cursor-not-allowed group disabled:opacity-60"
+                        >
+                            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <span class="group-hover:text-gray-600 dark:group-hover:text-gray-300">预览内容</span>
+                        </button>
+                        
+                        <button 
+                            type="button"
+                            id="downloadBtn"
+                            disabled
+                            class="flex-1 py-4 px-6 rounded-xl bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-300 font-bold transition-all flex items-center justify-center gap-2 cursor-not-allowed disabled:opacity-60"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            <span>下载配置</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Link Result Area (Hidden by default) -->
+                <div id="linkResultArea" class="mt-8 hidden">
+                    <div class="bg-indigo-50 dark:bg-slate-800 border border-indigo-100 dark:border-slate-600 rounded-xl p-5 transition-colors">
+                         <div class="flex flex-col gap-2">
+                             <div class="flex items-center justify-between mb-1">
+                                <h3 class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                                    </svg>
+                                    您的订阅链接
+                                </h3>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">可直接导入 Sing-box 或相关客户端</span>
+                             </div>
+                             
+                             <div class="flex flex-col sm:flex-row gap-3">
+                                 <input 
+                                    type="text" 
+                                    id="generatedUrlInput" 
+                                    readonly
+                                    class="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-3 font-mono shadow-inner outline-none transition-colors"
+                                 >
+                                 <button 
+                                    type="button"
+                                    id="copyLinkBtn"
+                                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 flex-shrink-0"
+                                 >
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+                                    </svg>
+                                    复制链接
+                                 </button>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+
+                <!-- Footer Info -->
+                <div class="mt-8 flex items-center justify-center text-gray-400 text-xs gap-4">
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                        Cloudflare Edge
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 hidden">
+        <div id="previewBackdrop" class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+        <!-- Added explicit style width: 70% to ensure size -->
+        <div class="bg-white dark:bg-slate-800 h-[80vh] rounded-3xl shadow-2xl relative z-10 flex flex-col overflow-hidden transform transition-all duration-300 scale-95 opacity-0 modal-content" 
+             id="previewModalContent"
+             style="width: 70%; max-width: 70%;">
+            <div class="px-6 py-4 border-b dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-900/50">
+                <h3 class="font-bold text-gray-800 dark:text-gray-200">配置预览</h3>
+                <button id="closePreviewBtn" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="flex-1 overflow-auto p-0 bg-[#2d2d2d] text-gray-300 font-mono text-xs sm:text-sm leading-relaxed hide-scrollbar">
+                <!-- Prism.js requires code to be inside pre > code -->
+                <!-- line-numbers class enables line numbering -->
+                <pre class="line-numbers m-0 h-full rounded-none"><code id="jsonPreview" class="language-json"></code></pre>
+            </div>
+            <div class="px-6 py-3 border-t dark:border-slate-700 flex justify-end gap-2 bg-white dark:bg-slate-800">
+                <button id="modalCopyBtn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded-lg font-bold text-sm transition-colors">复制全文</button>
+                <button id="modalDownloadBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm transition-colors">下载文件</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Config Modal -->
+    <div id="customConfigModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 hidden">
+        <div id="customBackdrop" class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+        <!-- Added explicit style width: 70% to ensure size -->
+        <div class="bg-white dark:bg-slate-800 h-[80vh] rounded-3xl shadow-2xl relative z-10 flex flex-col overflow-hidden transform transition-all duration-300 scale-95 opacity-0 modal-content" 
+             id="customConfigContent"
+             style="width: 70%; max-width: 70%;">
+            <div class="px-6 py-4 border-b dark:border-slate-700 flex items-center justify-between bg-purple-50 dark:bg-purple-900/20">
+                <div>
+                    <h3 class="font-bold text-purple-900 dark:text-purple-300">自定义配置模板</h3>
+                    <p class="text-xs text-purple-600 dark:text-purple-400">在此处编辑您的自定义 Sing-box 配置结构</p>
+                </div>
+                <button id="closeCustomBtn" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <div class="flex-1 p-8 flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900/50 border-2 border-dashed border-gray-200 dark:border-slate-700 m-4 rounded-xl">
+                <div class="text-center space-y-3">
+                    <div class="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                    </div>
+                    <h4 class="text-lg font-bold text-gray-700 dark:text-gray-200">配置区域准备就绪</h4>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
+                        这里将在未来添加自定义 JSON 模板编辑器。<br>
+                        您可以在此粘贴您的 `route`、`dns` 等自定义部分。
+                    </p>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 border-t dark:border-slate-700 flex justify-end gap-2 bg-white dark:bg-slate-800">
+                <button id="cancelCustomBtn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded-lg font-bold text-sm transition-colors">取消</button>
+                <button id="saveCustomBtn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm transition-colors">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div 
+        id="toast" 
+        class="fixed left-1/2 -translate-x-1/2 bottom-8 px-6 py-3 rounded-xl shadow-2xl text-white font-bold text-sm min-w-[300px] text-center hidden backdrop-blur-md z-[1000]"
+    >
+        <div class="flex items-center justify-center gap-3">
+            <svg id="toastIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"></svg>
+            <span id="toastMessage">操作成功</span>
+        </div>
+    </div>
+
+    <script>
+        let currentConfigData = null;
+
+        const form = document.getElementById('subForm');
+        const btn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const linkResultArea = document.getElementById('linkResultArea');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+        const toastIcon = document.getElementById('toastIcon');
+        
+        // Buttons
+        const previewBtn = document.getElementById('previewBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const generateLinkBtn = document.getElementById('generateLinkBtn');
+        const copyLinkBtn = document.getElementById('copyLinkBtn');
+        const statusBadge = document.getElementById('statusBadge');
+        
+        // Preview Modal Elements
+        const previewModal = document.getElementById('previewModal');
+        const previewModalContent = document.getElementById('previewModalContent');
+        const previewBackdrop = document.getElementById('previewBackdrop');
+        const closePreviewBtn = document.getElementById('closePreviewBtn');
+        const modalCopyBtn = document.getElementById('modalCopyBtn');
+        const modalDownloadBtn = document.getElementById('modalDownloadBtn');
+        const jsonPreview = document.getElementById('jsonPreview');
+
+        // Custom Config Modal Elements
+        const customConfigTrigger = document.getElementById('customConfigTrigger');
+        const customConfigCheckbox = document.getElementById('use_custom_config');
+        const customConfigModal = document.getElementById('customConfigModal');
+        const customConfigContent = document.getElementById('customConfigContent');
+        const customBackdrop = document.getElementById('customBackdrop');
+        const closeCustomBtn = document.getElementById('closeCustomBtn');
+        const cancelCustomBtn = document.getElementById('cancelCustomBtn');
+        const saveCustomBtn = document.getElementById('saveCustomBtn');
+
+        function showToast(msg, type = 'success') {
+            const isError = type === 'error';
+            toastMessage.textContent = msg;
+            
+            if (isError) {
+                toastIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+                toast.className = 'fixed left-1/2 -translate-x-1/2 bottom-8 px-6 py-3 rounded-xl shadow-2xl text-white font-bold text-sm min-w-[300px] text-center backdrop-blur-md bg-red-500/90 toast-show z-[1000]';
+            } else {
+                toastIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+                toast.className = 'fixed left-1/2 -translate-x-1/2 bottom-8 px-6 py-3 rounded-xl shadow-2xl text-white font-bold text-sm min-w-[300px] text-center backdrop-blur-md bg-indigo-600/90 toast-show z-[1000]';
+            }
+            
+            setTimeout(() => {
+                toast.classList.replace('toast-show', 'toast-hide');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 300);
+            }, 4000);
+        }
+
+        // ==========================================
+        // Event Listeners (Use this for reliability)
+        // ==========================================
+
+        // 1. Preview Button
+        previewBtn.addEventListener('click', openPreview);
+        closePreviewBtn.addEventListener('click', closePreview);
+        previewBackdrop.addEventListener('click', closePreview);
+        modalCopyBtn.addEventListener('click', copyToClipboard);
+        modalDownloadBtn.addEventListener('click', downloadConfig);
+
+        // 2. Download Button
+        downloadBtn.addEventListener('click', downloadConfig);
+
+        // 3. Generate Link Button
+        generateLinkBtn.addEventListener('click', generateLink);
+        copyLinkBtn.addEventListener('click', copyLink);
+
+        // 4. Custom Config Modal
+        customConfigTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            openCustomConfig();
+        });
+        closeCustomBtn.addEventListener('click', closeCustomConfig);
+        customBackdrop.addEventListener('click', closeCustomConfig);
+        cancelCustomBtn.addEventListener('click', closeCustomConfig);
+        saveCustomBtn.addEventListener('click', saveCustomConfig);
+
+        // ==========================================
+        // Dark Mode Logic
+        // ==========================================
+        const iconSun = document.getElementById('icon-sun');
+        const iconMoon = document.getElementById('icon-moon');
+        const darkModeBtn = document.getElementById('darkModeBtn');
+
+        // Function to set theme
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+                if (iconMoon) iconMoon.classList.add('hidden');
+                if (iconSun) iconSun.classList.remove('hidden');
+            } else {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+                if (iconSun) iconSun.classList.add('hidden');
+                if (iconMoon) iconMoon.classList.remove('hidden');
+            }
+        }
+
+        // Initialize Theme
+        const storedTheme = localStorage.getItem('theme');
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (storedTheme === 'dark' || (!storedTheme && systemPrefersDark)) {
+            setTheme('dark');
+        } else {
+            setTheme('light');
+        }
+
+        // Toggle Event Listener
+        if (darkModeBtn) {
+            darkModeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const isDark = document.documentElement.classList.contains('dark');
+                console.log('Dark mode toggle clicked. Current state:', isDark ? 'dark' : 'light', '→ Switching to:', isDark ? 'light' : 'dark');
+                setTheme(isDark ? 'light' : 'dark');
+            });
+        } else {
+            console.error('Dark mode button not found!');
+        }
+
+        // ==========================================
+        // Logic Functions
+        // ==========================================
+
+        function openCustomConfig() {
+            customConfigModal.classList.remove('hidden');
+            // Small delay to allow display:block to apply before opacity transition
+            setTimeout(() => {
+                customConfigContent.classList.remove('scale-95', 'opacity-0');
+                customConfigContent.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        function closeCustomConfig() {
+            customConfigContent.classList.add('scale-95', 'opacity-0');
+            customConfigContent.classList.remove('scale-100', 'opacity-100');
+            setTimeout(() => {
+                customConfigModal.classList.add('hidden');
+            }, 300);
+        }
+
+        function saveCustomConfig() {
+            customConfigCheckbox.checked = true; 
+            showToast('自定义配置已启用 (模拟)');
+            closeCustomConfig();
+        }
+
+        async function generateLink() {
+            const urls = document.getElementById('urlsInput').value.trim();
+            if (!urls) {
+                showToast('请先输入订阅链接', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('generateLinkBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 生成中...';
+
+            try {
+                const formData = new FormData();
+                formData.append('urls', urls);
+                
+                const response = await fetch('/sub', {  // Used /shorten as endpoint
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.subscriptionUrl) {
+                        // Save config data for preview/download
+                        if (data.config) {
+                            currentConfigData = data.config;
+                            setActionButtonsState(true);
+                        }
+                        
+                        linkResultArea.classList.remove('hidden');
+                        linkResultArea.classList.add('animate-fade-in');
+                        
+                        const urlInput = document.getElementById('generatedUrlInput');
+                        urlInput.value = data.subscriptionUrl;
+                        
+                        // Try Auto Copy
+                        try {
+                            await navigator.clipboard.writeText(data.subscriptionUrl);
+                            showToast('🔗 链接已生成并复制！');
+                        } catch (err) {
+                            // Fallback if clipboard API fails
+                            urlInput.select();
+                            document.execCommand('copy');
+                            showToast('🔗 链接已生成并复制！');
+                        }
+                        
+                        setTimeout(() => {
+                            linkResultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }, 100);
+                    } else {
+                        showToast('生成失败：未返回链接', 'error');
+                    }
+                } else {
+                    const err = await response.json();
+                    showToast(err.error || '生成失败', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('网络请求失败', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        function copyLink() {
+            const input = document.getElementById('generatedUrlInput');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast('链接已复制到剪贴板');
+            } catch (err) {
+                showToast('复制失败', 'error');
+            }
+        }
+
+        function setActionButtonsState(enabled) {
+            if (enabled) {
+                previewBtn.disabled = false;
+                previewBtn.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-gray-50', 'text-gray-400', 'dark:bg-slate-700', 'dark:text-gray-500');
+                previewBtn.classList.add('bg-white', 'dark:bg-slate-700', 'text-gray-700', 'dark:text-gray-200', 'hover:border-indigo-300', 'hover:text-indigo-600', 'cursor-pointer');
+                
+                downloadBtn.disabled = false;
+                downloadBtn.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-gray-200', 'text-gray-400', 'dark:bg-slate-600');
+                downloadBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700', 'text-white', 'cursor-pointer', 'shadow-md', 'hover:shadow-lg');
+                
+                statusBadge.textContent = '生成成功';
+                statusBadge.className = 'ml-2 text-xs bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold';
+            } else {
+                previewBtn.disabled = true;
+                previewBtn.className = 'flex-1 py-4 px-6 rounded-xl border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-500 font-bold transition-all flex items-center justify-center gap-2 cursor-not-allowed group disabled:opacity-60';
+                
+                downloadBtn.disabled = true;
+                downloadBtn.className = 'flex-1 py-4 px-6 rounded-xl bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-300 font-bold transition-all flex items-center justify-center gap-2 cursor-not-allowed disabled:opacity-60';
+                
+                statusBadge.textContent = '等待生成';
+                statusBadge.className = 'ml-2 text-xs bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-0.5 rounded-full font-normal';
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const urls = document.getElementById('urlsInput').value.trim();
+            
+            if (!urls) {
+                showToast('请输入至少一个订阅链接', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btnText.textContent = '生成中...';
+            setActionButtonsState(false);
+            linkResultArea.classList.add('hidden'); 
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    currentConfigData = await response.json();
+                    setActionButtonsState(true);
+                    showToast('🎉 配置文件生成成功');
+                } else {
+                    const err = await response.json();
+                    showToast(err.error || '解析失败', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('网络请求失败，请检查网络', 'error');
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = '生成配置文件';
+            }
+        });
+
+        function downloadConfig() {
+            if (!currentConfigData) return;
+            const blob = new Blob([JSON.stringify(currentConfigData, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sing-box-${new Date().getTime()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showToast('文件下载已开始');
+        }
+
+        function openPreview() {
+            if (!currentConfigData) {
+                showToast('请先生成配置', 'error');
+                return;
+            }
+            
+            // Format JSON logic with Prism syntax highlighting
+            jsonPreview.textContent = JSON.stringify(currentConfigData, null, 2);
+            Prism.highlightElement(jsonPreview);
+            
+            // Explicitly set display and z-index
+            previewModal.classList.remove('hidden');
+            previewModal.style.display = 'flex';
+            previewModal.style.zIndex = '5000';
+            
+            // Force reflow
+            void previewModal.offsetWidth;
+            
+            setTimeout(() => {
+                previewModalContent.classList.remove('scale-95', 'opacity-0');
+                previewModalContent.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        function closePreview() {
+            previewModalContent.classList.add('scale-95', 'opacity-0');
+            previewModalContent.classList.remove('scale-100', 'opacity-100');
+            setTimeout(() => {
+                previewModal.classList.add('hidden');
+                previewModal.style.display = 'none';
+            }, 300);
+        }
+
+        function copyToClipboard() {
+            const text = JSON.stringify(currentConfigData, null, 2); // Use raw JSON not innerText which might have line numbers
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('内容已复制');
+            } catch (err) {
+                showToast('复制失败', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+      
+    </script>
+</body>
+</html>
