@@ -4,7 +4,7 @@ import customerHTML from "./customer.html";
 // import config_template from './rule.json';
 import { convertList } from "./mihomo2sing-box.js";
 import { parseUrlsToClash } from "./LinkToClash.js";
-import teJson from "./te.json";
+import templateJson from "./template.json";
 
 import { drizzle } from "drizzle-orm/d1";
 import {
@@ -63,7 +63,7 @@ export default {
         }
 
         // 加载模板 (优先由 sessionId 获取草稿)
-        let template = teJson;
+        let template = template;
         if (is_customerParam && sessionId) {
           console.log("[Customer Check] Loading draft for sessionId:", sessionId);
           const draft = await db
@@ -156,7 +156,7 @@ export default {
           });
         }
 
-        let template = teJson;
+        let template = templateJson;
         let userHash = null;
 
         if (isCustomer && sessionId) {
@@ -322,7 +322,7 @@ export default {
       });
     }
     if (url.pathname === "/configReset") {
-      return new Response(JSON.stringify(teJson, null, 2), {
+      return new Response(JSON.stringify(templateJson, null, 2), {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
         },
@@ -346,7 +346,7 @@ export default {
         }
         // 3. Fallback to static template
         if (!configToReturn) {
-          configToReturn = teJson;
+          configToReturn = templateJson;
         }
 
         return new Response(JSON.stringify(configToReturn, null, 2), {
@@ -355,8 +355,8 @@ export default {
           },
         });
       } catch (e) {
-        // Fallback to local teJson on error
-        return new Response(JSON.stringify(teJson, null, 2), {
+        // Fallback to local templateJson on error
+        return new Response(JSON.stringify(templateJson, null, 2), {
           headers: {
             "Content-Type": "application/json; charset=utf-8",
           },
@@ -655,7 +655,7 @@ function generateId(length = 24) {
 
 async function fetchAndParseProxies(subscriptionInputs, metadataParam = null) {
   const config_hash = [];
-  const metadata = metadataParam || teJson[1] || {};
+  const metadata = metadataParam || templateJson[1] || {};
   let allProxyNodes = [];
 
   // 支持单个 URL 字符串或数组

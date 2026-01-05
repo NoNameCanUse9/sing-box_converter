@@ -461,7 +461,7 @@
                         <!-- 基本分组 -->
                         <div class="mb-4 mt-6">
                             <button @click="uiState.outboundBasicExpanded = !uiState.outboundBasicExpanded"
-                                class="w-full flex items-center justify-between mb-2 group">
+                                class="w-full flex items-center justify-between mb-1 group">
                                 <h3 class="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">
                                     基本分组
                                 </h3>
@@ -471,6 +471,10 @@
                                         d="M19 9l-7 7-7-7"></path>
                                 </svg>
                             </button>
+                            <p
+                                class="text-[10px] font-medium text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
+                                <span>⚠️</span> 基本分组请勿随意删除，可能导致转换失败
+                            </p>
                             <div class="border-t border-outline-variant dark:border-outline-dark-variant"></div>
                         </div>
 

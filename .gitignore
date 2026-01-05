@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.DS_Store
+*.sqlite
+dist/
+.idea/
+.vscode/
+*.log
+
