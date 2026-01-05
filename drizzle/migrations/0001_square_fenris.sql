@@ -1,0 +1,1 @@
+ALTER TABLE `draft_configs` ADD `created_at` integer DEFAULT CURRENT_TIMESTAMP;

@@ -22,9 +22,9 @@ const Mappers = { // 安全转数字
     buildTls: (item) => { // 基础判断：如果 tls 字段为 true，或者有 reality 配置，或者特定协议（H2/TUIC）默认开启
         const isTlsEnabled = item.tls || item['reality-opts'] || ['hysteria2', 'tuic', 'trojan'].includes(item.type);
 
-        if (! isTlsEnabled) 
+        if (!isTlsEnabled)
             return undefined;
-        
+
 
 
         const tlsObj = {
@@ -74,7 +74,7 @@ const Mappers = { // 安全转数字
             };
         } else if (net === 'grpc') {
             const opts = item['grpc-opts'] || {};
-            return {type: 'grpc', service_name: opts['grpc-service-name'], idle_timeout: opts['idle-timeout']};
+            return { type: 'grpc', service_name: opts['grpc-service-name'], idle_timeout: opts['idle-timeout'] };
         } else if (net === 'h2' || net === 'http') {
             const opts = item['h2-opts'] || item['http-opts'] || {};
             return {
@@ -190,13 +190,13 @@ const Converters = {
     // === Hysteria 2 ===
     hysteria2: (item) => { // 处理带宽格式 (Clash 可能是 "100 Mbps" 字符串)
         const parseBandwidth = (val) => {
-            if (!val) 
+            if (!val)
                 return undefined;
-            
 
-            if (typeof val === 'number') 
+
+            if (typeof val === 'number')
                 return val;
-            
+
 
             return parseInt(val.split(' ')[0]);
         };
@@ -262,14 +262,12 @@ const Converters = {
 
         // Clash 的 ip 和 ipv6 字段 -> Sing-box local_address 数组
         if (item.ip) {
-            node.local_address.push(item.ip.includes('/') ? item.ip : `${
-                item.ip
-            }/32`);
+            node.local_address.push(item.ip.includes('/') ? item.ip : `${item.ip
+                }/32`);
         }
         if (item.ipv6) {
-            node.local_address.push(item.ipv6.includes('/') ? item.ipv6 : `${
-                item.ipv6
-            }/128`);
+            node.local_address.push(item.ipv6.includes('/') ? item.ipv6 : `${item.ipv6
+                }/128`);
         }
 
         if (item.reserved) {
@@ -324,9 +322,9 @@ function convertList(inputList) {
 
     // 映射处理
     const result = inputList.map((item) => {
-        if (!item || !item.type) 
+        if (!item || !item.type)
             return null;
-        
+
 
 
         let type = item.type.toLowerCase();
@@ -340,9 +338,8 @@ function convertList(inputList) {
             try {
                 return converter(item);
             } catch (e) {
-                console.warn(`[Mihomo2SingBox] 转换失败: ${
-                    item.name
-                }`, e);
+                console.warn(`[Mihomo2SingBox] 转换失败: ${item.name
+                    }`, e);
                 return null;
             }
         } else { // 不支持的类型 (如 url-test, selector 等组策略，不应出现在纯节点转换里)
@@ -355,8 +352,4 @@ function convertList(inputList) {
 }
 
 // 导出
-if (typeof module !== 'undefined') {
-    module.exports = {
-        convertList
-    };
-}
+export { convertList };

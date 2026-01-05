@@ -1,0 +1,8 @@
+[[d1_databases]]
+binding = "DB"
+database_name = "subscribe.db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+migrations_dir = "./drizzle/migrations"
+
+[text_blobs]
+INDEX_HTML = "./index.html"

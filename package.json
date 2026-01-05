@@ -1,0 +1,35 @@
+{
+    "name": "sing-box",
+    "version": "1.0.0",
+    "description": "",
+    "main": "work.js",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build && vite build --config vite.config.customer.js",
+        "preview": "vite preview",
+        "test": "node test.js",
+        "worker": "wrangler dev work.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "module",
+    "dependencies": {
+        "drizzle-kit": "^0.31.8",
+        "drizzle-orm": "^0.45.1",
+        "js-yaml": "^4.1.1",
+        "prismjs": "^1.30.0"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4.1.18",
+        "@tailwindcss/vite": "^4.1.18",
+        "@vitejs/plugin-vue": "^6.0.3",
+        "autoprefixer": "^10.4.23",
+        "postcss": "^8.5.6",
+        "tailwindcss": "^4.1.18",
+        "vite": "^7.3.0",
+        "vite-plugin-singlefile": "^2.3.0",
+        "vue": "^3.5.26",
+        "wrangler": "^4.54.0"
+    }
+}

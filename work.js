@@ -1,470 +1,1020 @@
-import yaml from 'js-yaml';
-import indexHTML from './index.html';
-import config_template from './rule.json';
-import {convertList} from './mihomo2sing-box.js';
-import {parseUrlsToClash} from './LinkToClash.js';
-import {drizzle} from 'drizzle-orm/d1';
-import {subscriptions, users, singboxConfigs} from './schema.ts';
-import {eq} from 'drizzle-orm';
+import yaml from "js-yaml";
+import indexHTML from "./index.html";
+import customerHTML from "./customer.html";
+// import config_template from './rule.json';
+import { convertList } from "./mihomo2sing-box.js";
+import { parseUrlsToClash } from "./LinkToClash.js";
+import teJson from "./te.json";
+
+import { drizzle } from "drizzle-orm/d1";
+import {
+  subscriptions,
+  users,
+  singboxConfigs,
+  draftConfigs,
+  customerConfigs,
+} from "./schema.ts";
+import { eq, lt } from "drizzle-orm";
 
 export default {
-    async fetch(request, env, ctx) {
-        const url = new URL(request.url);
-        const db = drizzle(env.DB);
-        const config_hash = [];
-        let isSplitParam = url.searchParams.get("is_split") === "true";
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const db = drizzle(env.DB);
+    const config_hash = [];
+    const sessionId = getSessionId(request);
+    let template = null;
+    let is_customerParam = url.searchParams.get("is_customer") === "true";
+    let isSplitParam = url.searchParams.get("is_split") === "true";
+    // 1. Handle /convert OR params based requests
+    if (url.pathname === "/convert" && request.method === "POST" && !url.pathname.startsWith("/cus/")) {
+      try {
+        const body = await request.json();
+        const rawUrls = body.urls || "";
+        isSplitParam = body.is_split === true || String(body.is_split) === "true";
+        is_customerParam = body.is_customer === true || String(body.is_customer) === "true";
 
-        // 1. Handle /convert OR params based requests
-        if (url.pathname === "/convert" || url.searchParams.has("urls")) {
-            let urlsProcessed = [];
-            if (request.method === "POST") {
-                const formData = await request.formData();
-                const urlsRaw = formData.get("urls") || "";
-                urlsProcessed = urlsRaw.split("\n").map(u => u.trim()).filter(u => u.startsWith("http"));
-                if (formData.has("is_split")) 
-                    isSplitParam = formData.get("is_split") === "true";
-                
-
-
-            } else {
-                const urlsRaw = url.searchParams.get("urls") || "";
-                urlsProcessed = urlsRaw.split(",").map(u => u.trim()).filter(u => u.startsWith("http"));
-            }
-
-            if (urlsProcessed.length === 0) {
-                return new Response(JSON.stringify({error: "没有有效的订阅地址"}), {status: 400});
-            }
-
-            try {
-                const {config: finalConfig} = await generateSingboxConfig(urlsProcessed, isSplitParam);
-                return new Response(JSON.stringify(finalConfig, null, 2), {
-                    headers: {
-                        "Content-Type": "application/json; charset=utf-8",
-                        "Access-Control-Allow-Origin": "*"
-                    }
-                });
-            } catch (e) {
-                return new Response(JSON.stringify({
-                    error: "配置生成失败: " + e.message
-                }), {status: 500});
-            }
+        if (!rawUrls) {
+          return new Response(JSON.stringify({ error: "未找到可用的订阅链接" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+          });
         }
 
-        // 2. Handle /sub (Generate Subscription Link, convert once if needed)
-        if (url.pathname === "/sub" && request.method === "POST") {
-            try {
-                const formData = await request.formData();
-                const urlsRaw = formData.get("urls") || "";
-
-                if (! urlsRaw) 
-                    return new Response(JSON.stringify({error: "没有提供订阅链接"}), {status: 400});
-                
-
-
-                const urlsProcessed = urlsRaw.split("\n").map(u => u.trim()).filter(u => u.startsWith("http"));
-
-                if (urlsProcessed.length === 0) 
-                    return new Response(JSON.stringify({error: "没有有效的订阅地址"}), {status: 400});
-                
-
-
-                // Run conversion once to ensure validity (and potentially cache config in future)
-                const {config: finalConfig, hashes: config_hash} = await generateSingboxConfig(urlsProcessed, isSplitParam);
-
-                const userId = generateId(24);
-
-                await db.insert(users).values({id: userId, createdAt: Date.now()}).run();
-
-                // Insert each subscription - ID will auto-increment
-                for (let i = 0; i < urlsProcessed.length; i++) {
-                    await db.insert(subscriptions).values({
-                        userId: userId,
-                        name: `Subscription ${
-                            i + 1
-                        }`,
-                        url: urlsProcessed[i],
-                        lastHash: config_hash[i],
-                        updatedAt: Date.now()
-                    }).run();
-                }
-
-                // Insert config - ID will auto-increment
-                await db.insert(singboxConfigs).values({userId: userId, jsonContent: JSON.stringify(finalConfig), createdAt: Date.now()}).run();
-
-                const subscriptionUrl = `${
-                    url.origin
-                }/sub/${userId}`;
-                return new Response(JSON.stringify({subscriptionUrl: subscriptionUrl, config: finalConfig}), {
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Access-Control-Allow-Origin": "*"
-                    }
-                });
-            } catch (e) {
-                return new Response(JSON.stringify({
-                    error: e.message || "Server Error"
-                }), {status: 500});
-            }
+        // 强力解码：针对可能存在的 URL 编码进行还原
+        let decodedUrls = rawUrls;
+        let decodeCount = 0;
+        while (decodedUrls.includes("%") && decodeCount < 3) {
+          try {
+            decodedUrls = decodeURIComponent(decodedUrls);
+            decodeCount++;
+          } catch (e) { break; }
         }
 
-        // 3. Handle Short Link Access (GET /sub/:id)
-        const shortLinkMatch = url.pathname.match(/^\/sub\/([a-zA-Z0-9-]+)$/);
-        if (shortLinkMatch) {
-            const id = shortLinkMatch[1];
-            try {
-                const result = await db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
-                if (result) {
-                    const urlsProcessed = result.url.split(/[\n,]/).map(u => u.trim()).filter(u => u.startsWith("http"));
-                    const {config: finalConfig} = await generateSingboxConfig(urlsProcessed, isSplitParam); // Generate fresh config on access
-                    return new Response(JSON.stringify(finalConfig, null, 2), {
-                        headers: {
-                            "Content-Type": "application/json; charset=utf-8",
-                            "Access-Control-Allow-Origin": "*"
-                        }
-                    });
-                } else {
-                    return new Response("Link not found", {status: 404});
-                }
-            } catch (e) {
-                return new Response("Database error: " + e.message, {status: 500});
-            }
+        const subUrls = decodedUrls
+          .split(/[\n\s]+/)
+          .map((u) => u.trim())
+          .filter((u) => u.startsWith("http"));
+
+        if (subUrls.length === 0) {
+          return new Response(JSON.stringify({ error: "未找到有效的订阅地址" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+          });
         }
 
-        return new Response(indexHTML, {
-            headers: {
-                "Content-Type": "text/html; charset=utf-8"
-            }
+        // 加载模板 (优先由 sessionId 获取草稿)
+        let template = teJson;
+        if (is_customerParam && sessionId) {
+          console.log("[Customer Check] Loading draft for sessionId:", sessionId);
+          const draft = await db
+            .select()
+            .from(draftConfigs)
+            .where(eq(draftConfigs.sessionId, sessionId))
+            .get();
+          if (draft) {
+            template = JSON.parse(draft.jsonContent);
+            console.log("[Draft Config] Loaded successfully");
+          }
+        }
+
+        // 处理节点并生成配置
+        const proxyData = await fetchAndParseProxies(subUrls, template[1]);
+        const finalConfig = await generateSingboxConfig(
+          proxyData,
+          isSplitParam,
+          template,
+        );
+
+        return new Response(JSON.stringify(finalConfig, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
         });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "请求格式错误或解析失败: " + e.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+        });
+      }
     }
+
+    // 1.5 Handle /sub POST (Generate and Save Subscription Link)
+    if (url.pathname === "/sub" && request.method === "POST") {
+      try {
+        // 清理超过一天的过期草稿
+        const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+        await db.delete(draftConfigs)
+          .where(lt(draftConfigs.createdAt, oneDayAgo))
+          .run();
+
+        let rawUrls = "";
+        let isSplit = false;
+        let isCustomer = false;
+
+        const contentType = request.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const body = await request.json();
+          rawUrls = body.urls || "";
+          isSplit = body.is_split === true || String(body.is_split) === "true";
+          isCustomer =
+            body.is_customer === true || String(body.is_customer) === "true";
+        } else {
+          const formData = await request.formData();
+          rawUrls = formData.get("urls") || "";
+          isSplit = formData.get("is_split") === "true";
+          isCustomer = formData.get("is_customer") === "true";
+        }
+
+        if (!rawUrls) {
+          return new Response(JSON.stringify({ error: "没有提供订阅链接" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // URL 解码与过滤
+        let decodedUrls = rawUrls;
+        let decodeCount = 0;
+        while (decodedUrls.includes("%") && decodeCount < 3) {
+          try {
+            decodedUrls = decodeURIComponent(decodedUrls);
+            decodeCount++;
+          } catch (e) {
+            break;
+          }
+        }
+        const subUrls = decodedUrls
+          .split(/[\n\s]+/)
+          .map((u) => u.trim())
+          .filter((u) => u.startsWith("http"));
+
+        if (subUrls.length === 0) {
+          return new Response(JSON.stringify({ error: "没有有效的订阅地址" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        let template = teJson;
+        let userHash = null;
+
+        if (isCustomer && sessionId) {
+          // 1. 尝试从草稿表读取
+          const draft = await db
+            .select()
+            .from(draftConfigs)
+            .where(eq(draftConfigs.sessionId, sessionId))
+            .get();
+          if (draft) {
+            template = JSON.parse(draft.jsonContent);
+          }
+
+          // 2. 获取持久化哈希
+          const sessionUser = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, sessionId))
+            .get();
+          if (sessionUser) {
+            userHash = sessionUser.customerConfigHash;
+          }
+        }
+
+        // 生成配置
+        const proxyData = await fetchAndParseProxies(subUrls, template[1]);
+        const finalConfig = await generateSingboxConfig(
+          proxyData,
+          isSplit,
+          template,
+        );
+
+        // 持久化到数据库
+        const newUserId = generateId(24);
+        await db
+          .insert(users)
+          .values({
+            id: newUserId,
+            customerConfigHash: userHash,
+            createdAt: Date.now(),
+          })
+          .run();
+
+        // 存储子链接
+        for (let i = 0; i < subUrls.length; i++) {
+          await db
+            .insert(subscriptions)
+            .values({
+              userId: newUserId,
+              name: `Subscription ${i + 1}`,
+              url: subUrls[i],
+              lastHash: proxyData.hashes[i] || "",
+              updatedAt: Date.now(),
+            })
+            .run();
+        }
+
+        // 存储配置缓存
+        await db
+          .insert(singboxConfigs)
+          .values({
+            userId: newUserId,
+            jsonContent: JSON.stringify(finalConfig),
+            createdAt: Date.now(),
+          })
+          .run();
+
+        const subscriptionUrl = `${url.origin}/sub?id=${newUserId}`;
+        return new Response(
+          JSON.stringify({ subscriptionUrl, config: finalConfig }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      } catch (e) {
+        console.error("[/sub POST Error]", e);
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    // 2. Handle /sub (Generate Subscription Link, convert once if needed)
+    if (
+      url.pathname === "/sub" &&
+      request.method === "GET" &&
+      (url.searchParams.has("id") || url.search.length > 1)
+    ) {
+      const id =
+        url.searchParams.get("id") ||
+        url.searchParams.get("") ||
+        url.search.substring(1).split("&")[0];
+      try {
+        // 1. 获取用户信息
+        const user = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, id))
+          .get();
+        if (!user) {
+          return new Response("订阅 ID 不存在", { status: 404 });
+        }
+
+        // 2. 获取订阅链接
+        const subRecords = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.userId, id))
+          .all();
+        let urlsProcessed = subRecords.map((s) => s.url);
+
+        if (urlsProcessed.length === 0) {
+          return new Response("未找到可用的订阅链接", { status: 400 });
+        }
+
+        // 3. 获取自定义配置（可选）
+        let metadata = null;
+        if (user.customerConfigHash) {
+          const configRecord = await db
+            .select()
+            .from(customerConfigs)
+            .where(eq(customerConfigs.configHash, user.customerConfigHash))
+            .get();
+          if (configRecord) {
+            fullConfig = JSON.parse(configRecord.jsonContent);
+            metadata = fullConfig[1];
+            if (fullConfig[0]) {
+              metadata._base = fullConfig[0];
+            }
+          }
+        }
+
+        // 4. 生成配置
+        const subscriptionInputs = urlsProcessed.map((url) => ({ url }));
+        const proxyData = await fetchAndParseProxies(
+          subscriptionInputs,
+          metadata,
+        );
+        const finalConfig = await generateSingboxConfig(
+          proxyData,
+          isSplitParam,
+          metadata,
+        );
+
+        return new Response(JSON.stringify(finalConfig, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (e) {
+        return new Response("生成失败: " + e.message, { status: 500 });
+      }
+    }
+    if (url.pathname === "/customer.html") {
+      return new Response(customerHTML, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+        },
+      });
+    }
+    if (url.pathname === "/configReset") {
+      return new Response(JSON.stringify(teJson, null, 2), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      });
+    }
+    if (url.pathname === "/fetchConfig") {
+      try {
+        let configToReturn = null;
+        const session = getSessionId(request);
+
+        // 1. Try to get from draft for current session
+        if (session) {
+          const draft = await db
+            .select()
+            .from(draftConfigs)
+            .where(eq(draftConfigs.sessionId, session))
+            .get();
+          if (draft) {
+            configToReturn = JSON.parse(draft.jsonContent);
+          }
+        }
+        // 3. Fallback to static template
+        if (!configToReturn) {
+          configToReturn = teJson;
+        }
+
+        return new Response(JSON.stringify(configToReturn, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+          },
+        });
+      } catch (e) {
+        // Fallback to local teJson on error
+        return new Response(JSON.stringify(teJson, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+          },
+        });
+      }
+    }
+
+    if (url.pathname.startsWith("/cus/")) {
+      if (url.pathname === "/cus/save") {
+        try {
+          const body = await request.json();
+          const jsonContent = JSON.stringify(body);
+          /* console.log("Saving config to server with content:", jsonContent); */
+          let session = getSessionId(request);
+          let isNewSession = false;
+
+          if (!session) {
+            // Generate Session ID with Timestamp: timestamp_uuid
+            session = `${Date.now()}_${crypto.randomUUID()}`;
+            isNewSession = true;
+          }
+          console.log("Saving config to server with session:", session);
+          // 2. 保存到草稿表 (Drafts)
+          const existingDraft = await db
+            .select()
+            .from(draftConfigs)
+            .where(eq(draftConfigs.sessionId, session))
+            .get();
+
+          if (existingDraft) {
+            const result = await db
+              .update(draftConfigs)
+              .set({ jsonContent })
+              .where(eq(draftConfigs.sessionId, session))
+              .run();
+          } else {
+            const result = await db
+              .insert(draftConfigs)
+              .values({
+                sessionId: session,
+                jsonContent,
+                createdAt: Math.floor(Date.now() / 1000)
+              })
+              .run();
+          }
+
+          const response = new Response(
+            JSON.stringify({ success: true, message: "草稿已保存" }),
+            {
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+              },
+            },
+          );
+
+          if (isNewSession) {
+            response.headers.append(
+              "Set-Cookie",
+              `sub_session_id=${session}; Path=/; HttpOnly; SameSite=Lax`,
+            );
+          }
+
+          return response;
+        } catch (e) {
+          return new Response(
+            JSON.stringify({ success: false, error: e.message }),
+            {
+              status: 500,
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+              },
+            },
+          );
+        }
+      }
+
+      if (url.pathname === "/cus/check_draft") {
+        const session = getSessionId(request);
+        let hasDraft = false;
+        if (session) {
+          const draft = await db
+            .select()
+            .from(draftConfigs)
+            .where(eq(draftConfigs.sessionId, session))
+            .get();
+          hasDraft = !!draft;
+        }
+        return new Response(JSON.stringify({ hasDraft }), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      if (url.pathname === "/cus/cleanup") {
+        const session = getSessionId(request);
+        if (session) {
+          ctx.waitUntil(
+            db
+              .delete(draftConfigs)
+              .where(eq(draftConfigs.sessionId, session))
+              .run(),
+          );
+        }
+        return new Response(null, {
+          status: 204,
+          headers: { "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      if (url.pathname === "/cus/fetch_proxies") {
+        const urlsRaw = url.searchParams.get("urls") || "";
+        const urlsProcessed = urlsRaw
+          .split(/[\n,]/)
+          .map((u) => u.trim())
+          .filter((u) => u.startsWith("http"));
+        if (urlsProcessed.length === 0) {
+          return new Response(
+            JSON.stringify({ success: false, error: "No URLs provided" }),
+            { status: 400 },
+          );
+        }
+        try {
+          const subscriptionInputs = urlsProcessed.map((url) => ({ url }));
+          const { allProxyNodes } =
+            await fetchAndParseProxies(subscriptionInputs);
+          // Filter out selector/urltest if they happen to be in there (unlikely from fetchAndParseProxies)
+          const proxies = allProxyNodes.flat(); // fetchAndParseProxies returns just proxies
+
+          return new Response(JSON.stringify({ success: true, proxies }), {
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        } catch (e) {
+          return new Response(
+            JSON.stringify({ success: false, error: e.message }),
+            {
+              status: 500,
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+              },
+            },
+          );
+        }
+      }
+    }
+
+    return new Response(indexHTML, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+      },
+    });
+  },
 };
 
 function decodeBase64(str) {
-    try {
-        return decodeURIComponent(escape(atob(str.trim().replace(/\s/g, ''))));
-    } catch (e) {
-        return str;
-    }
+  try {
+    return decodeURIComponent(escape(atob(str.trim().replace(/\s/g, ""))));
+  } catch (e) {
+    return str;
+  }
 }
 
 // Helper function to calculate SHA-256 hash using Web Crypto API
 async function sha256Hash(text) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(text);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function extractProxies(rawData) {
-    let contentHash = null;
+  let contentHash = null;
 
-    // 定义一个辅助函数来尝试解析内容
-    const tryParseContent = async (data) => { // 首先尝试 YAML 解析
-        try {
-            const config = yaml.load(data);
-            if (config && Array.isArray(config.proxies)) {
-                console.log("成功解析为 YAML 格式");
-                contentHash = await sha256Hash(data);
-                return config.proxies;
-            }
-        } catch (yamlError) { // YAML 解析失败，继续尝试其他格式
-        }
-
-        // 检查是否包含代理协议链接
-        const hasProxyUrls = /^(vless|vmess|ss|ssr|trojan|hysteria2|hy2|tuic|socks5):\/\//im.test(data);
-
-        if (hasProxyUrls) {
-            try { // 使用 parseUrlsToClash 解析 URL 列表
-                const parsedNodes = parseUrlsToClash(data);
-                if (parsedNodes && parsedNodes.length > 0) {
-                    console.log(`成功解析 ${
-                        parsedNodes.length
-                    } 个 URL 节点`);
-                    contentHash = await sha256Hash(data);
-                    return parsedNodes;
-                }
-            } catch (urlError) {
-                console.error("URL 解析失败:", urlError.message);
-            }
-        }
-
-        return null;
-    };
-
-    // 1. 先尝试直接解析原始内容（可能是明文 YAML 或明文 URL 列表）
-    console.log("尝试解析原始内容...");
-    const directResult = await tryParseContent(rawData);
-    if (directResult) {
-        return {proxies: directResult, hash: contentHash};
-    }
-
-    // 2. 如果直接解析失败，尝试 Base64 解码后再解析
-    console.log("原始内容解析失败，尝试 Base64 解码...");
+  // 定义一个辅助函数来尝试解析内容
+  const tryParseContent = async (data) => {
+    // 首先尝试 YAML 解析
     try {
-        const decodedContent = decodeURIComponent(escape(atob(rawData.trim().replace(/\s/g, ''))));
-        console.log("Base64 解码成功，尝试解析解码后的内容...");
-
-        const decodedResult = await tryParseContent(decodedContent);
-        if (decodedResult) {
-            return {proxies: decodedResult, hash: contentHash};
-        }
-
-        console.log("解码后的内容也无法解析");
-    } catch (e) {
-        console.log("Base64 解码失败:", e.message);
+      const config = yaml.load(data);
+      if (config && Array.isArray(config.proxies)) {
+        console.log("成功解析为 YAML 格式");
+        contentHash = await sha256Hash(data);
+        return config.proxies;
+      }
+    } catch (yamlError) {
+      // YAML 解析失败，继续尝试其他格式
     }
 
-    throw new Error("解析失败，内容既不是有效的 YAML 也不是有效的 URL 列表");
+    // 检查是否包含代理协议链接
+    const hasProxyUrls =
+      /^(vless|vmess|ss|ssr|trojan|hysteria2|hy2|tuic|socks5):\/\//im.test(
+        data,
+      );
+
+    if (hasProxyUrls) {
+      try {
+        // 使用 parseUrlsToClash 解析 URL 列表
+        const parsedNodes = parseUrlsToClash(data);
+        if (parsedNodes && parsedNodes.length > 0) {
+          console.log(`成功解析 ${parsedNodes.length} 个 URL 节点`);
+          contentHash = await sha256Hash(data);
+          return parsedNodes;
+        }
+      } catch (urlError) {
+        console.error("URL 解析失败:", urlError.message);
+      }
+    }
+
+    return null;
+  };
+
+  // 1. 先尝试直接解析原始内容（可能是明文 YAML 或明文 URL 列表）
+  console.log("尝试解析原始内容...");
+  const directResult = await tryParseContent(rawData);
+  if (directResult) {
+    return { proxies: directResult, hash: contentHash };
+  }
+
+  // 2. 如果直接解析失败，尝试 Base64 解码后再解析
+  console.log("原始内容解析失败，尝试 Base64 解码...");
+  try {
+    const decodedContent = decodeURIComponent(
+      escape(atob(rawData.trim().replace(/\s/g, ""))),
+    );
+    console.log("Base64 解码成功，尝试解析解码后的内容...");
+
+    const decodedResult = await tryParseContent(decodedContent);
+    if (decodedResult) {
+      return { proxies: decodedResult, hash: contentHash };
+    }
+
+    console.log("解码后的内容也无法解析");
+  } catch (e) {
+    console.log("Base64 解码失败:", e.message);
+  }
+
+  throw new Error("解析失败，内容既不是有效的 YAML 也不是有效的 URL 列表");
 }
 
 function applyRegexFilter(dataList, regexStr) {
-    if (! regexStr || !Array.isArray(dataList)) 
-        return [];
-    
+  if (!regexStr || !Array.isArray(dataList)) return [];
 
+  let pattern = regexStr;
+  let flags = "gu";
+  if (pattern.includes("(?i)")) {
+    pattern = pattern.replace(/\(\?i\)/g, "");
+    if (!flags.includes("i")) flags += "i";
+  }
+  try {
+    if (!pattern) return dataList;
 
-    let pattern = regexStr;
-    let flags = "gu";
-    if (pattern.includes("(?i)")) {
-        pattern = pattern.replace(/\(\?i\)/g, "");
-        if (! flags.includes("i")) 
-            flags += "i";
-        
-
-
-    }
-    try {
-        if (! pattern) 
-            return dataList;
-        
-
-
-        const regex = new RegExp(pattern, flags.includes("i") ? "iu" : "u");
-        return dataList.filter(item => typeof item === 'string' && regex.test(item));
-    } catch (e) {
-        console.error("非法正则语法:", e.message, "原字符串:", regexStr);
-        return [];
-    }
+    const regex = new RegExp(pattern, flags.includes("i") ? "iu" : "u");
+    return dataList.filter(
+      (item) => typeof item === "string" && regex.test(item),
+    );
+  } catch (e) {
+    console.error("非法正则语法:", e.message, "原字符串:", regexStr);
+    return [];
+  }
 }
 
 function validateRegex(regexStr) {
-    if (typeof regexStr !== 'string') 
-        return {valid: false, error: "输入不是字符串"};
-    
+  if (typeof regexStr !== "string")
+    return { valid: false, error: "输入不是字符串" };
 
-
-    let pattern = regexStr;
-    let flags = "u";
-    if (pattern.includes("(?i)")) {
-        pattern = pattern.replace(/\(\?i\)/g, "");
-        flags += "i";
-    }
-    try {
-        new RegExp(pattern, flags);
-        return {valid: true, error: null};
-    } catch (e) {
-        return {valid: false, error: e.message};
-    }
-}
-
-
-async function generateSingboxConfig(urlsProcessed, isSplitParam) {
-    const config_hash = []; // Initialize config_hash inside function
-
-    const {
-        ruler_base_setting,
-        base_proxy_group,
-        rule_proxy_group,
-        rules_set_pair,
-        fillter: filterConfig,
-        country_filter,
-        dns,
-        log,
-        experimental,
-        inbounds
-    } = config_template;
-
-    let finalOutbounds = [];
-    let allProxyNodes = [];
-    let countryGroups = {};
-
-    base_proxy_group.forEach(group => {
-        if (group.type !== "direct") {
-            countryGroups[group.tag] = [];
-        }
-    });
-
-    const autoSelectNodes = [];
-    const otherNodes = [];
-
-    for (let i = 0; i < urlsProcessed.length; i++) {
-        const subUrl = urlsProcessed[i];
-        const subSuffix = urlsProcessed.length > 1 ? ` - S${
-            i + 1
-        }` : '';
-        try {
-            const res = await fetch(subUrl);
-            if (! res.ok) 
-                throw new Error(`HTTP ${
-                    res.status
-                }`);
-            
-
-
-            const text = await res.text();
-            const {proxies: rawProxies, hash} = await extractProxies(text);
-            config_hash.push(hash);
-            let proxies = convertList(rawProxies);
-
-            if (filterConfig && filterConfig[0] && Array.isArray(filterConfig[0].exclude)) {
-                for (const excludeRegex of filterConfig[0].exclude) {
-                    proxies = proxies.filter(p => !new RegExp(excludeRegex, "i").test(p.tag));
-                }
-            }
-
-            for (let p of proxies) {
-                const originalTag = p.tag;
-                const newTag = `${originalTag}${subSuffix}`;
-                const node = {
-                    ... p,
-                    tag: newTag
-                };
-                allProxyNodes.push(node);
-                autoSelectNodes.push(newTag);
-
-                let matched = false;
-                for (const filter of country_filter) {
-                    if (validateRegex(filter.regex).valid) {
-                        if (applyRegexFilter([originalTag], filter.regex).length > 0) {
-                            if (countryGroups[filter.tag]) {
-                                countryGroups[filter.tag].push(newTag);
-                                matched = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (! matched) {
-                    otherNodes.push(newTag);
-                }
-            }
-        } catch (e) {
-            console.error(`订阅获取失败 [${subUrl}]: ${
-                e.message
-            }`);
-        }
-    }
-
-    finalOutbounds.push(... allProxyNodes);
-
-    if (isSplitParam || urlsProcessed.length === 1) {
-        base_proxy_group.forEach(template => {
-            const group = {
-                ...template
-            };
-            if (group.tag === "😀 自动择优") 
-                group.outbounds = [... autoSelectNodes];
-             else if (group.tag === "🌐 其他节点") 
-                group.outbounds = otherNodes.length > 0 ? otherNodes : ["direct"];
-             else if (countryGroups[group.tag]) 
-                group.outbounds = countryGroups[group.tag].length > 0 ? countryGroups[group.tag] : ["direct"];
-            
-
-
-            finalOutbounds.push(group);
-        });
-    } else {
-        for (let i = 0; i < urlsProcessed.length; i++) {
-            const subSuffix = ` - S${
-                i + 1
-            }`;
-            const subNodes = allProxyNodes.filter(n => n.tag.endsWith(subSuffix)).map(n => n.tag);
-            const subOtherNodes = otherNodes.filter(tag => tag.endsWith(subSuffix));
-
-            base_proxy_group.forEach(template => {
-                if (template.type === "direct") {
-                    if (i === 0) 
-                        finalOutbounds.push(template);
-                    
-
-
-                    return;
-                }
-                const group = JSON.parse(JSON.stringify(template));
-                group.tag = `${
-                    group.tag
-                }${subSuffix}`;
-                if (template.tag === "😀 自动择优") 
-                    group.outbounds = subNodes;
-                 else if (template.tag === "🌐 其他节点") 
-                    group.outbounds = subOtherNodes.length > 0 ? subOtherNodes : ["direct"];
-                 else if (countryGroups[template.tag]) {
-                    group.outbounds = countryGroups[template.tag].filter(tag => tag.endsWith(subSuffix));
-                    if (group.outbounds.length === 0) 
-                        group.outbounds = ["direct"];
-                    
-
-
-                }
-                finalOutbounds.push(group);
-            });
-        }
-    }
-
-    rule_proxy_group.forEach(group => {
-        const g = {
-            ...group
-        };
-        if (g.tag === "全局代理") {
-            g.outbounds = [... autoSelectNodes];
-        } else if (g.outbounds && g.outbounds.length === 0) {
-            if (! isSplitParam && urlsProcessed.length > 1) {
-                g.outbounds = [];
-                for (let i = 0; i < urlsProcessed.length; i++) {
-                    const subSuffix = ` - S${
-                        i + 1
-                    }`;
-                    base_proxy_group.forEach(b => {
-                        if (b.type !== "direct") 
-                            g.outbounds.push(`${
-                                b.tag
-                            }${subSuffix}`);
-                         else if (i === 0) 
-                            g.outbounds.push(b.tag);
-                        
-
-
-                    });
-                }
-            } else {
-                g.outbounds = base_proxy_group.map(b => b.tag);
-            }
-        }
-        finalOutbounds.push(g);
-    });
-
-    const finalConfig = {
-        log,
-        dns,
-        experimental,
-        inbounds,
-        outbounds: finalOutbounds,
-        route: {
-            rules: [
-                ...ruler_base_setting,
-                ...rules_set_pair
-            ]
-        }
-    };
-    finalConfig.route.rules[0].inbound.push(... finalConfig.inbounds.map(i => i.tag));
-
-    return {config: finalConfig, hashes: config_hash};
+  let pattern = regexStr;
+  let flags = "u";
+  if (pattern.includes("(?i)")) {
+    pattern = pattern.replace(/\(\?i\)/g, "");
+    flags += "i";
+  }
+  try {
+    new RegExp(pattern, flags);
+    return { valid: true, error: null };
+  } catch (e) {
+    return { valid: false, error: e.message };
+  }
 }
 
 // Generate random Hex ID
 function generateId(length = 24) {
-    const byteLength = Math.ceil(length / 2);
-    const array = new Uint8Array(byteLength);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('').slice(0, length);
+  const byteLength = Math.ceil(length / 2);
+  const array = new Uint8Array(byteLength);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, length);
+}
+
+async function fetchAndParseProxies(subscriptionInputs, metadataParam = null) {
+  const config_hash = [];
+  const metadata = metadataParam || teJson[1] || {};
+  let allProxyNodes = [];
+
+  // 支持单个 URL 字符串或数组
+  let inputs = subscriptionInputs;
+  if (typeof subscriptionInputs === "string") {
+    inputs = [{ url: subscriptionInputs }];
+  } else if (
+    Array.isArray(subscriptionInputs) &&
+    subscriptionInputs.length > 0
+  ) {
+    // 如果数组元素是字符串，转换为对象格式
+    if (typeof subscriptionInputs[0] === "string") {
+      inputs = subscriptionInputs.map((url) => ({ url }));
+    }
+  }
+
+  for (let i = 0; i < inputs.length; i++) {
+    const subInput = inputs[i];
+    const subUrl = subInput.url;
+    // const subSuffix = inputs.length > 1 ? ` - S${i + 1}` : ""; // Suffix logic moved to generation
+    try {
+      let text;
+      if (subInput.content) {
+        text = subInput.content;
+      } else {
+        const res = await fetch(subUrl, {
+          headers: {
+            "User-Agent": "Clash/1.0", // 伪装成 Clash 客户端，通常能获得更好的兼容性
+          },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        text = await res.text();
+        console.log(`[Fetched Content Preview] ${subUrl.substring(0, 30)}... : ${text.substring(0, 100).replace(/\n/g, "\\n")}`);
+
+        // 尝试对 Fetch 到的内容解码，防止某些订阅源返回的是 URL 编码的内容
+        try {
+          if (text.includes("%")) {
+            const decodedText = decodeURIComponent(text);
+            // 简单的启发式检查：如果解码后看起来更像 YAML/Base64/URI list，就使用解码后的
+            if (decodedText.length < text.length) {
+              // 只有当长度变短（说明确实有编码字符被还原）时才替换，避免误伤
+              text = decodedText;
+            }
+          }
+        } catch (e) {
+          // 解码失败忽略，使用原始内容
+        }
+      }
+
+      // 使用文件内部定义的 extractProxies
+      const { proxies: rawProxies, hash } = await extractProxies(text);
+      config_hash.push(hash);
+
+      // 使用导入的 convertList
+      let proxies = convertList(rawProxies);
+
+      // --- Apply Exclude Filter (排除过滤器) ---
+      if (metadata.filter?.excluded_outbounds?.length > 0) {
+        const excludes = metadata.filter.excluded_outbounds;
+        proxies = proxies.filter(
+          (p) =>
+            !excludes.some((reg) => applyRegexFilter([p.tag], reg).length > 0),
+        );
+      }
+
+      // Store grouped proxies
+      allProxyNodes.push(proxies);
+    } catch (e) {
+      console.error(`订阅获取失败 [${subUrl}]: ${e.message}`);
+      allProxyNodes.push([]); // Keep index alignment even on failure
+    }
+  }
+  return { allProxyNodes, hashes: config_hash };
+}
+
+async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
+  const configBase = templateConfig[0];
+  const metadata = templateConfig[1];
+  let finalConfig = JSON.parse(JSON.stringify(configBase));
+  const { allProxyNodes } = proxyData; // Now correctly destructuring from { allProxyNodes, hashes }
+
+  // ==========================================
+  // 1. Ruleset Outbound 对齐 (Route Rules Sync)
+  // ==========================================
+
+  // 防御性编程：确保 route.rules 结构存在
+  if (!finalConfig.route) finalConfig.route = {};
+  if (!finalConfig.route.rules) finalConfig.route.rules = [];
+
+  const rulesetMap = metadata.ruleset_outbound_map || {};
+
+  // 找到插入位置：在 clash_mode 规则之后
+  let insertIndex = finalConfig.route.rules.findIndex(
+    (rule) => rule.clash_mode === "global",
+  );
+  if (insertIndex === -1) {
+    insertIndex = finalConfig.route.rules.findIndex((rule) => rule.rule_set);
+  }
+  if (insertIndex === -1) {
+    insertIndex = Math.min(6, finalConfig.route.rules.length);
+  } else {
+    insertIndex += 1;
+  }
+
+  // 遍历 ruleset_outbound_map 中的每一项配置
+  for (const [rulesetId, targetOutbound] of Object.entries(rulesetMap)) {
+    const existingRule = finalConfig.route.rules.find(
+      (rule) =>
+        rule.rule_set &&
+        (rule.rule_set === rulesetId ||
+          (Array.isArray(rule.rule_set) && rule.rule_set.includes(rulesetId))),
+    );
+
+    if (existingRule) {
+      existingRule.outbound = targetOutbound;
+    } else {
+      finalConfig.route.rules.splice(insertIndex, 0, {
+        rule_set: rulesetId,
+        outbound: targetOutbound,
+      });
+      insertIndex++;
+    }
+  }
+
+  // ==========================================
+  // 2. 遍历 Metadata 并分类 (Classify Groups)
+  // ==========================================
+  const regionList = []; // 地区分类
+  const basicList = []; // 基本分组
+  const ruleList = []; // 应用规则
+
+  Object.entries(metadata.outboundGroupMap).forEach(([groupName, category]) => {
+    switch (category) {
+      case "地区分类":
+        regionList.push(groupName);
+        break;
+      case "应用规则":
+        ruleList.push(groupName);
+        break;
+      case "基本分组":
+        // 已通过 levelMap 逻辑处理，此处仅需标记为已知
+        break;
+      default:
+        console.warn(`未知的分类: ${category} - ${groupName}`);
+        break;
+    }
+  });
+
+  // 如果你想把它们打成一个对象返回：
+  const classifiedGroups = {
+    regionList,
+    ruleList,
+  };
+  const outboundLevelMap = {
+    level1: [],
+    level2: [],
+    level3: [],
+    level4: [],
+  };
+
+  // 1. 备份并清理模板中的原始出站组（我们将重新构建这个数组）
+  const templateOutbounds = [...finalConfig.outbounds];
+  finalConfig.outbounds = [];
+
+  // 获取原始的基础标签列表
+  const baseBasicTags = ["♻️ 自动选择", "🐸 手动选择"];
+
+  if (isSplitParam && allProxyNodes.length > 1) {
+    allProxyNodes.forEach((_, subIndex) => {
+      const n = subIndex + 1;
+      const groupSuffix = `-${n}`;
+
+      // Level 1: 创建带后缀的地区组
+      classifiedGroups.regionList.forEach((region) => {
+        const tag = `${region}${groupSuffix}`;
+        outboundLevelMap.level1.push(tag);
+
+        // 从模板复制配置
+        const template = templateOutbounds.find(o => o.tag === region);
+        finalConfig.outbounds.push({
+          ...(template ? JSON.parse(JSON.stringify(template)) : { type: "urltest" }),
+          tag: tag,
+          outbounds: []
+        });
+      });
+
+      // Level 2: 创建带后缀的 自动/手动选择
+      baseBasicTags.forEach((basic) => {
+        const tag = `${basic}${groupSuffix}`;
+        outboundLevelMap.level2.push(tag);
+
+        const template = templateOutbounds.find(o => o.tag === basic);
+        finalConfig.outbounds.push({
+          ...(template ? JSON.parse(JSON.stringify(template)) : { type: "selector" }),
+          tag: tag,
+          outbounds: []
+        });
+      });
+    });
+
+    // Level 2 补充：全局直连（不带后缀）
+    outboundLevelMap.level2.push("🎯 全球直连");
+    const directTemplate = templateOutbounds.find(o => o.tag === "🎯 全球直连");
+    if (directTemplate) finalConfig.outbounds.push(directTemplate);
+
+  } else {
+    // 默认逻辑：不分订阅，直接使用模板中的组
+    outboundLevelMap.level1 = classifiedGroups.regionList;
+    outboundLevelMap.level2 = [...baseBasicTags, "🎯 全球直连"];
+
+    // 将 level1 和 level2 的组从模板重新填回
+    [...outboundLevelMap.level1, ...outboundLevelMap.level2].forEach(tag => {
+      const template = templateOutbounds.find(o => o.tag === tag);
+      if (template) finalConfig.outbounds.push(JSON.parse(JSON.stringify(template)));
+    });
+  }
+
+  // 处理 Level 3 和 Level 4（这些通常是全局的，不带后缀）
+  outboundLevelMap.level3.push("🚀 默认代理");
+  outboundLevelMap.level4 = [...classifiedGroups.ruleList, "🍃 延迟辅助", "🐠 漏网之鱼", "🌍 全局代理"];
+
+  [...outboundLevelMap.level3, ...outboundLevelMap.level4].forEach(tag => {
+    const template = templateOutbounds.find(o => o.tag === tag);
+    if (template) {
+      finalConfig.outbounds.push(JSON.parse(JSON.stringify(template)));
+    } else {
+      // 如果模板里没有，创建一个基础的选择器
+      finalConfig.outbounds.push({ tag, type: "selector", outbounds: [] });
+    }
+  });
+
+  // ==========================================
+  // 3. 节点预处理与归类 (Node Processing)
+  // ==========================================
+
+  const isMultiSub = allProxyNodes.length > 1;
+  const countryFilters = metadata.filter?.country_filter || [];
+
+  allProxyNodes.forEach((sub, subIndex) => {
+    const n = subIndex + 1;
+    // 节点名称后缀：多订阅时加上，防止重名
+    const nodeSuffix = isMultiSub ? `-${n}` : "";
+    // 分组名称后缀：多订阅且开启 split 时加上
+    const groupSuffix = (isSplitParam && isMultiSub) ? `-${n}` : "";
+
+    // 定位“手动选择”分组
+    const manualRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("手动选择"));
+    const manualTag = isSplitParam ? `${manualRef}${groupSuffix}` : manualRef;
+    let manualGroup = finalConfig.outbounds.find(o => o.tag === manualTag);
+
+    // 定位“全局代理”分组（全局通常不带后缀）
+    const globalRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("全局代理"));
+    let globalGroup = finalConfig.outbounds.find(o => o.tag === globalRef);
+
+    for (let node of sub) {
+      // A. 节点重命名
+      const originalTag = node.tag;
+      const finalTag = `${originalTag}${nodeSuffix}`;
+      const newNode = { ...node, tag: finalTag };
+      finalConfig.outbounds.push(newNode);
+
+      // B. 填充手动选择和全局代理
+      if (manualGroup) {
+        if (!manualGroup.outbounds) manualGroup.outbounds = [];
+        manualGroup.outbounds.push(finalTag);
+      }
+      if (globalGroup) {
+        if (!globalGroup.outbounds) globalGroup.outbounds = [];
+        globalGroup.outbounds.push(finalTag);
+      }
+
+      // C. 地区分类匹配
+      for (const filter of countryFilters) {
+        const targetGroupTag = `${filter.outbound}${groupSuffix}`;
+        let group = finalConfig.outbounds.find(o => o.tag === targetGroupTag);
+
+        if (group && applyRegexFilter([finalTag], filter.regex).length > 0) {
+          if (!group.outbounds) group.outbounds = [];
+          group.outbounds.push(finalTag);
+        }
+      }
+    }
+  });
+  // ==========================================
+  // D. 自动选择逻辑：将地区组加入自动选择
+  // ==========================================
+  if (isSplitParam && isMultiSub) {
+    allProxyNodes.forEach((_, subIndex) => {
+      const n = subIndex + 1;
+      const groupSuffix = `-${n}`;
+      const autoGroupTag = `♻️ 自动选择${groupSuffix}`;
+      const autoGroup = finalConfig.outbounds.find(o => o.tag === autoGroupTag);
+
+      if (autoGroup) {
+        if (!autoGroup.outbounds) autoGroup.outbounds = [];
+        classifiedGroups.regionList.forEach((regionName) => {
+          autoGroup.outbounds.push(`${regionName}${groupSuffix}`);
+        });
+      }
+    });
+  } else {
+    const autoGroup = finalConfig.outbounds.find(o => o.tag === "♻️ 自动选择");
+    if (autoGroup) {
+      if (!autoGroup.outbounds) autoGroup.outbounds = [];
+      classifiedGroups.regionList.forEach((regionName) => {
+        autoGroup.outbounds.push(regionName);
+      });
+    }
+  }
+  // ==========================================
+  // E. 层级聚合逻辑：Level 3 包含 L1+L2, Level 4 包含 L1+L2+L3
+  // ==========================================
+
+  // 聚合 L3 (包含 L1 和 L2)
+  outboundLevelMap.level3.forEach(l3Tag => {
+    const group = finalConfig.outbounds.find(o => o.tag === l3Tag);
+    if (group) {
+      if (!group.outbounds) group.outbounds = [];
+      const targets = [...outboundLevelMap.level1, ...outboundLevelMap.level2];
+      targets.forEach(t => {
+        if (!group.outbounds.includes(t)) group.outbounds.push(t);
+      });
+    }
+  });
+
+  // 聚合 L4 (包含 L1, L2 和 L3)
+  outboundLevelMap.level4.forEach(l4Tag => {
+    const group = finalConfig.outbounds.find(o => o.tag === l4Tag);
+    if (group) {
+      if (!group.outbounds) group.outbounds = [];
+      const targets = [...outboundLevelMap.level1, ...outboundLevelMap.level2, ...outboundLevelMap.level3];
+      targets.forEach(t => {
+        if (!group.outbounds.includes(t)) group.outbounds.push(t);
+      });
+    }
+  });
+
+  return finalConfig;
+}
+// 模拟测试逻辑
+// 修正：node.json 已经是 Array<Array<Node>> 结构，直接使用即可
+
+function getSessionId(request) {
+  const cookieString = request.headers.get("Cookie") || "";
+  const match = cookieString.match(/sub_session_id=([^;]+)/);
+  if (!match) return null;
+
+  const rawId = match[1];
+  // Check if it's a timestamped ID (format: timestamp_uuid)
+  if (rawId.includes("_")) {
+    const [timestamp, uuid] = rawId.split("_");
+    const ts = parseInt(timestamp);
+    if (!isNaN(ts)) {
+      // 3 Hours Expiry check
+      if (Date.now() - ts > 3 * 60 * 60 * 1000) {
+        console.log("Session expired:", rawId);
+        return null; // Expired
+      }
+    }
+  }
+  return rawId;
 }
