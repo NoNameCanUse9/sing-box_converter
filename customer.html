@@ -14,28 +14,28 @@
             theme: {
                 extend: {
                     colors: {
-                        // MD3 Color Tokens
+                        // MD3 Color Tokens - Clean Light Theme
                         primary: {
-                            DEFAULT: '#6750A4',
-                            container: '#EADDFF',
-                            dark: '#D0BCFF',
-                            'dark-container': '#4F378B'
+                            DEFAULT: '#005FB0', // Professional Blue
+                            container: '#D6E3FF',
+                            dark: '#A8C8FF',
+                            'dark-container': '#004786'
                         },
                         surface: {
-                            DEFAULT: '#FEF7FF',
-                            container: '#F3EDF7',
-                            'container-high': '#ECE6F0',
-                            'container-highest': '#E6E0E9',
-                            dark: '#1C1B1F',
-                            'dark-container': '#211F26',
-                            'dark-container-high': '#2B2930',
-                            'dark-container-highest': '#36343B'
+                            DEFAULT: '#FFFFFF', // Pure White background
+                            container: '#F0F2F5', // Soft neutral grey
+                            'container-high': '#E7E9ED', // Input background
+                            'container-highest': '#DDE0E5',
+                            dark: '#1A1C1E',
+                            'dark-container': '#2E3033',
+                            'dark-container-high': '#393B3E',
+                            'dark-container-highest': '#44474A'
                         },
                         outline: {
-                            DEFAULT: '#79747E',
-                            variant: '#CAC4D0',
-                            dark: '#938F99',
-                            'dark-variant': '#49454F'
+                            DEFAULT: '#74777F',
+                            variant: '#C4C6D0',
+                            dark: '#8E9099',
+                            'dark-variant': '#44474E'
                         }
                     },
                     borderRadius: {
@@ -173,46 +173,70 @@
                                         }}</span>
                                 </div>
 
+                                <!-- Type Field (Common) -->
+                                <div class="mb-4">
+                                    <label class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">
+                                        Type : 类型
+                                    </label>
+                                    <select v-model="srv.type"
+                                        class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors appearance-none cursor-pointer">
+                                        <option v-for="t in options.dnsServerTypes" :value="t">{{ t }}</option>
+                                    </select>
+                                </div>
+
                                 <!-- Normal DNS Server Fields -->
                                 <template v-if="srv.type !== 'fakeip' && srv.tag !== 'fakeip'">
-                                    <div class="mb-4">
-                                        <label
-                                            class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Address
-                                            : 地址</label>
-                                        <input v-model="srv.address"
-                                            class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
-                                            placeholder="1.1.1.1 or https://...">
-                                    </div>
-
-                                    <div>
-                                        <label
-                                            class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Strategy
-                                            : 策略</label>
-                                        <select v-model="srv.strategy"
-                                            class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors">
-                                            <option v-for="opt in options.dnsStrategies" :value="opt">{{opt}}</option>
-                                        </select>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label
+                                                class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">
+                                                Server : 地址
+                                            </label>
+                                            <input v-model="srv.server"
+                                                class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
+                                                placeholder="1.1.1.1 or https://...">
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">
+                                                Port : 端口
+                                            </label>
+                                            <input v-model.number="srv.server_port" type="number"
+                                                class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
+                                                placeholder="53">
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">
+                                                Detour : 出站
+                                            </label>
+                                            <input v-model="srv.detour"
+                                                class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
+                                                placeholder="🎯 全球直连">
+                                        </div>
                                     </div>
                                 </template>
 
                                 <!-- FakeIP Fields -->
                                 <template v-else>
-                                    <div class="mb-4">
-                                        <label
-                                            class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Inet4
-                                            Range : IPv4 范围</label>
-                                        <input v-model="srv.inet4_range"
-                                            class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
-                                            placeholder="198.18.0.0/15">
-                                    </div>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label
+                                                class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Inet4
+                                                Range : IPv4 范围</label>
+                                            <input v-model="srv.inet4_range"
+                                                class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
+                                                placeholder="198.18.0.0/15">
+                                        </div>
 
-                                    <div>
-                                        <label
-                                            class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Inet6
-                                            Range : IPv6 范围</label>
-                                        <input v-model="srv.inet6_range"
-                                            class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
-                                            placeholder="fc00::/18">
+                                        <div>
+                                            <label
+                                                class="block text-xs font-medium mb-2 text-outline dark:text-outline-dark">Inet6
+                                                Range : IPv6 范围</label>
+                                            <input v-model="srv.inet6_range"
+                                                class="w-full bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors"
+                                                placeholder="fc00::/18">
+                                        </div>
                                     </div>
                                 </template>
                             </div>
@@ -634,12 +658,12 @@
                                         </div>
                                     </div>
 
-                                    <!-- Bound Outbounds Display (when collapsed) -->
-                                    <div v-if="!uiState.expandedRuleSets[ruleset.tag] && getRulesetOutbounds(ruleset.tag).length > 0"
+                                    <!-- Bound Outbound Display (when collapsed) -->
+                                    <div v-if="!uiState.expandedRuleSets[ruleset.tag] && getRulesetOutbounds(ruleset.tag)"
                                         class="px-3 pb-3 flex flex-wrap gap-1">
-                                        <span v-for="outbound in getRulesetOutbounds(ruleset.tag)" :key="outbound"
+                                        <span
                                             class="text-xs px-2 py-1 rounded-md3-full bg-tertiary-container dark:bg-tertiary-dark-container">
-                                            {{ outbound }}
+                                            {{ getRulesetOutbounds(ruleset.tag) }}
                                         </span>
                                     </div>
 
@@ -651,11 +675,10 @@
                                                 Outbounds:</label>
                                             <div
                                                 class="flex flex-wrap gap-2 p-2 bg-surface-container-high dark:bg-surface-dark-container-high rounded-md3 border border-outline-variant dark:border-outline-dark-variant">
-                                                <span v-for="outbound in getRulesetOutbounds(ruleset.tag)"
-                                                    :key="outbound"
+                                                <span v-if="getRulesetOutbounds(ruleset.tag)"
                                                     class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md3-full bg-tertiary-container dark:bg-tertiary-dark-container group/tag cursor-pointer"
-                                                    @click="unbindOutboundFromRuleset(ruleset.tag, outbound)">
-                                                    {{ outbound }}
+                                                    @click="unbindOutboundFromRuleset(ruleset.tag)">
+                                                    {{ getRulesetOutbounds(ruleset.tag) }}
                                                     <span
                                                         class="opacity-0 group-hover/tag:opacity-100 transition-opacity">✕</span>
                                                 </span>
@@ -726,7 +749,7 @@
                                         </h3>
                                     </div>
 
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-4">
                                         <!-- External Controller -->
                                         <div>
                                             <label
@@ -747,7 +770,7 @@
                                         </div>
 
                                         <!-- Download URL -->
-                                        <div class="col-span-2">
+                                        <div>
                                             <label
                                                 class="block text-xs font-medium text-outline dark:text-outline-dark mb-1">UI
                                                 Download URL : 下载地址</label>
@@ -772,9 +795,9 @@
                                                 class="block text-xs font-medium text-outline dark:text-outline-dark mb-1">Default
                                                 Mode : 默认模式</label>
                                             <select v-model="config[0].experimental.clash_api.default_mode"
-                                                class="w-full text-sm px-3 py-2 rounded-md3 border border-outline-variant dark:border-outline-dark-variant bg-surface dark:bg-surface-dark focus:border-primary dark:focus:border-primary-dark outline-none transition-all appearance-none cursor-pointer">
-                                                <option v-for="mode in options.clashApi_mode" :value="mode">{{ mode }}
-                                                </option>
+                                                class="w-full text-sm px-3 py-2 rounded-md3 border border-outline-variant dark:border-outline-dark-variant bg-surface dark:bg-surface-dark focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-all appearance-none cursor-pointer">
+                                                <option v-for="mode in ['rule', 'global', 'direct']" :value="mode">{{
+                                                    mode }}</option>
                                             </select>
                                         </div>
                                     </div>
@@ -1514,12 +1537,7 @@
                     ruleset_outbound_map.value = {};
                     config.value[0].route.rules.forEach(rule => {
                         if (rule.rule_set && rule.outbound) {
-                            if (!ruleset_outbound_map.value[rule.rule_set]) {
-                                ruleset_outbound_map.value[rule.rule_set] = [];
-                            }
-                            if (!ruleset_outbound_map.value[rule.rule_set].includes(rule.outbound)) {
-                                ruleset_outbound_map.value[rule.rule_set].push(rule.outbound);
-                            }
+                            ruleset_outbound_map.value[rule.rule_set] = rule.outbound;
                         }
                     });
                 };
@@ -1575,6 +1593,7 @@
                     outboundGroupType: [
                         "urltest", "selector"
                     ],
+                    dnsServerTypes: ["udp", "https", "tls", "quic", "dhcp", "local", "fakeip"],
                     clashApi_mode: ["rule", "direct", "global"]
                 };
 
@@ -1585,13 +1604,13 @@
 
                     if (!config.value[1].filter.country_filter) {
                         config.value[1].filter.country_filter = [
-                            { outbound: "🇭🇰 香港节点", regex: "(?i)港|hk|hongkong|hong\\s*kong" },
-                            { outbound: "🇯🇵 日本节点", regex: "(?i)日|jp|japan|japanese" },
-                            { outbound: "🇸🇬 狮城节点", regex: "(?i)新加坡|坡|狮城|SG|Singapore" },
-                            { outbound: "🇺🇸 美国节点", regex: "(?i)美|us|united\\s*states" },
-                            { outbound: "🇬🇧 英国节点", regex: "(?i)英|uk|united\\s*kingdom|great\\s*britain" },
-                            { outbound: "🇰🇷 韩国节点", regex: "(?i)韩|kr|korea" },
-                            { outbound: "🇹🇼 台湾节点", regex: "(?i)台|tw|taiwan" }
+                            { outbound: "🇭🇰 香港自动", regex: "(?i)港|hk|hongkong|hong\\s*kong" },
+                            { outbound: "🇯🇵 日本自动", regex: "(?i)日|jp|japan|japanese" },
+                            { outbound: "🇸🇬 狮城自动", regex: "(?i)新加坡|坡|狮城|SG|Singapore" },
+                            { outbound: "🇺🇸 美国自动", regex: "(?i)美|us|usa|united|america" },
+                            { outbound: "🇬🇧 英国自动", regex: "(?i)英|uk|united\\s*kingdom|great\\s*britain" },
+                            { outbound: "🇰🇷 韩国自动", regex: "(?i)韩|kr|korea" },
+                            { outbound: "🇹🇼 台湾自动", regex: "(?i)台|tw|taiwan" }
                         ];
                     }
 
@@ -1858,38 +1877,23 @@
                 });
 
                 const getRulesetOutbounds = (rulesetTag) => {
-                    return ruleset_outbound_map.value[rulesetTag] || [];
+                    return ruleset_outbound_map.value[rulesetTag] || null;
                 };
 
                 const bindOutboundToRuleset = (rulesetTag, outboundTag) => {
-                    if (!ruleset_outbound_map.value[rulesetTag]) {
-                        ruleset_outbound_map.value[rulesetTag] = [];
-                    }
-                    if (!ruleset_outbound_map.value[rulesetTag].includes(outboundTag)) {
-                        ruleset_outbound_map.value[rulesetTag].push(outboundTag);
-                    }
+                    ruleset_outbound_map.value[rulesetTag] = outboundTag;
                     uiState.value.showOutboundSelectorModal = false;
                 };
 
-                const unbindOutboundFromRuleset = (rulesetTag, outboundTag) => {
-                    if (ruleset_outbound_map.value[rulesetTag]) {
-                        const index = ruleset_outbound_map.value[rulesetTag].indexOf(outboundTag);
-                        if (index !== -1) {
-                            ruleset_outbound_map.value[rulesetTag].splice(index, 1);
-                        }
-                    }
+                const unbindOutboundFromRuleset = (rulesetTag) => {
+                    delete ruleset_outbound_map.value[rulesetTag];
                 };
 
                 const bindManualOutbound = (rulesetTag) => {
                     const outboundTag = uiState.value.manualOutboundInput[rulesetTag]?.trim();
                     if (!outboundTag) return;
 
-                    if (!ruleset_outbound_map.value[rulesetTag]) {
-                        ruleset_outbound_map.value[rulesetTag] = [];
-                    }
-                    if (!ruleset_outbound_map.value[rulesetTag].includes(outboundTag)) {
-                        ruleset_outbound_map.value[rulesetTag].push(outboundTag);
-                    }
+                    ruleset_outbound_map.value[rulesetTag] = outboundTag;
                     // 清空输入框
                     uiState.value.manualOutboundInput[rulesetTag] = '';
                 };

@@ -10,20 +10,23 @@
             "servers": [
                 {
                     "tag": "local",
-                    "address": "223.5.5.5",
-                    "detour": "🎯 全球直连",
-                    "strategy": "prefer_ipv4"
+                    "type": "udp",
+                    "server": "223.5.5.5",
+                    "server_port": 53,
+                    "detour": "🎯 全球直连"
                 }, {
                     "tag": "public",
-                    "address": "https://dns.alidns.com/dns-query",
-                    "address_resolver": "local",
-                    "detour": "🎯 全球直连",
-                    "strategy": "prefer_ipv4"
+                    "type": "https",
+                    "server": "dns.alidns.com",
+                    "server_port": 443,
+                    "strategy": "prefer_ipv4",
+                    "detour": "🎯 全球直连"
                 }, {
                     "tag": "foreign",
-                    "address": "8.8.8.8",
-                    "detour": "🚀 默认代理",
-                    "strategy": "prefer_ipv4"
+                    "type": "https",
+                    "server": "1.1.1.1",
+                    "server_port": 443,
+                    "detour": "🚀 默认代理"
                 }, {
                     "tag": "fakeip",
                     "type": "fakeip",
@@ -33,8 +36,18 @@
             ],
             "rules": [
                 {
-                    "clash_mode": "direct",
+                    "domain": [
+                        "dns.alidns.com",
+                        "doh.pub",
+                        "dot.pub",
+                        "dns.google",
+                        "cloudflare-dns.com"
+                    ],
                     "server": "local"
+                },
+                {
+                    "clash_mode": "direct",
+                    "server": "public"
                 },
                 {
                     "clash_mode": "global",
@@ -43,10 +56,9 @@
                 {
                     "query_type": "HTTPS",
                     "action": "reject"
-                },
-                {
+                }, {
                     "rule_set": "geosite-fakeipfilter",
-                    "server": "local"
+                    "server": "public"
                 }, {
                     "query_type": [
                         "A", "AAAA"
@@ -55,7 +67,7 @@
                     "rewrite_ttl": 1
                 }, {
                     "rule_set": "geosite-cn",
-                    "server": "local"
+                    "server": "public"
                 }
             ],
             "final": "foreign",
@@ -91,10 +103,10 @@
                 "listen_port": 7891,
                 "network": "udp"
             }, {
-                "type": "direct-dns",
+                "type": "direct",
                 "tag": "dns-in",
                 "listen": "0.0.0.0",
-                "listen_port": 7874
+                "listen_port": 53
             }
         ],
         "outbounds": [
@@ -183,7 +195,21 @@
                 "interval": "10m",
                 "tolerance": 50
             }, {
-                "tag": "🇺🇲 美国自动",
+                "tag": "🇺🇸 美国自动",
+                "type": "urltest",
+                "outbounds": [],
+                "url": "https://www.gstatic.com/generate_204",
+                "interval": "10m",
+                "tolerance": 50
+            }, {
+                "tag": "🇬🇧 英国自动",
+                "type": "urltest",
+                "outbounds": [],
+                "url": "https://www.gstatic.com/generate_204",
+                "interval": "10m",
+                "tolerance": 50
+            }, {
+                "tag": "🇰🇷 韩国自动",
                 "type": "urltest",
                 "outbounds": [],
                 "url": "https://www.gstatic.com/generate_204",
@@ -209,7 +235,11 @@
                 "outbounds": []
             }, {
                 "tag": "🎯 全球直连",
-                "type": "direct"
+                "type": "direct",
+                "domain_resolver": {
+                    "server": "local",
+                    "strategy": "prefer_ipv4"
+                }
             }, {
                 "tag": "🐸 手动选择",
                 "type": "selector",
@@ -223,17 +253,22 @@
                     "sniffer": ["http", "tls", "quic", "dns"]
                 },
                 {
-                    "protocol": "dns",
-                    "action": "hijack-dns"
-                },
-                {
-                    "port": 53,
+                    "type": "logical",
+                    "mode": "or",
+                    "rules": [
+                        {
+                            "port": 53
+                        }, {
+                            "protocol": "dns"
+                        }
+                    ],
                     "action": "hijack-dns"
                 },
                 {
                     "ip_is_private": true,
                     "outbound": "🎯 全球直连"
-                }, {
+                },
+                {
                     "clash_mode": "direct",
                     "outbound": "🎯 全球直连"
                 }, {
@@ -436,10 +471,7 @@
                 }
             ],
             "final": "🐠 漏网之鱼",
-            "auto_detect_interface": true,
-            "default_domain_resolver": {
-                "server": "public"
-            }
+            "auto_detect_interface": true
         },
         "experimental": {
             "cache_file": {
@@ -462,28 +494,28 @@
             "country_filter": [
                 {
                     "outbound": "🇭🇰 香港自动",
-                    "regex": "(?i)港|hk|hongkong|hong\\s*kong"
+                    "regex": "(?i)港|hk|hongkong|hong\\s*kong|🇭🇰"
                 },
                 {
                     "outbound": "🇯🇵 日本自动",
-                    "regex": "(?i)日|jp|japan|japanese"
+                    "regex": "(?i)日|jp|japan|japanese|🇯🇵"
                 },
                 {
                     "outbound": "🇸🇬 狮城自动",
-                    "regex": "(?i)新加坡|坡|狮城|SG|Singapore"
+                    "regex": "(?i)新加坡|坡|狮城|SG|Singapore|🇸🇬"
                 },
                 {
-                    "outbound": "🇺� 美国自动",
-                    "regex": "(?i)美|us|united\\s*states"
+                    "outbound": "🇺🇸 美国自动",
+                    "regex": "(?i)美|us|usa|united|america|🇺🇸|🇺🇲"
                 }, {
                     "outbound": "🇬🇧 英国自动",
-                    "regex": "(?i)英|uk|united\\s*kingdom|great\\s*britain"
+                    "regex": "(?i)英|uk|united\\s*kingdom|great\\s*britain|🇬🇧"
                 }, {
                     "outbound": "🇰🇷 韩国自动",
-                    "regex": "(?i)韩|kr|korea"
+                    "regex": "(?i)韩|kr|korea|🇰🇷"
                 }, {
                     "outbound": "🇹🇼 台湾自动",
-                    "regex": "(?i)台|tw|taiwan"
+                    "regex": "(?i)台|tw|taiwan|🇹🇼"
                 }
             ],
             "excluded_outbounds": []
@@ -492,7 +524,9 @@
             "🇭🇰 香港自动": "地区分类",
             "🇯🇵 日本自动": "地区分类",
             "🇸🇬 狮城自动": "地区分类",
-            "🇺🇲 美国自动": "地区分类",
+            "🇺🇸 美国自动": "地区分类",
+            "🇬🇧 英国自动": "地区分类",
+            "🇰🇷 韩国自动": "地区分类",
             "🇹🇼 台湾自动": "地区分类",
             "🐠 漏网之鱼": "基本分组",
             "🚀 默认代理": "基本分组",
@@ -515,26 +549,26 @@
             "🍏 Apple": "应用规则"
         },
         "ruleset_outbound_map": {
-            "geosite-ai": ["🧠 AI"],
-            "geosite-youtube": ["📹 YouTube"],
-            "geosite-google": ["🍀 Google"],
-            "geosite-github": ["👨‍💻 Github"],
-            "geosite-onedrive": ["🐬 OneDrive"],
-            "geosite-microsoft": ["🪟 Microsoft"],
-            "geosite-apple": ["🍏 Apple"],
-            "geosite-telegram": ["📲 Telegram"],
-            "geosite-tiktok": ["🎵 TikTok"],
-            "geosite-netflix": ["🎥 Netflix"],
-            "geosite-paypal": ["💶 PayPal"],
-            "geosite-steamcn": ["🎯 全球直连"],
-            "geosite-steam": ["🎮 Steam"],
-            "geosite-!cn": ["🚀 默认代理"],
-            "geosite-cn": ["🎯 全球直连"],
-            "geoip-google": ["🍀 Google"],
-            "geoip-apple": ["🍏 Apple"],
-            "geoip-telegram": ["📲 Telegram"],
-            "geoip-netflix": ["🎥 Netflix"],
-            "geoip-cn": ["🎯 全球直连"]
+            "geosite-ai": "🧠 AI",
+            "geosite-youtube": "📹 YouTube",
+            "geosite-google": "🍀 Google",
+            "geosite-github": "👨‍💻 Github",
+            "geosite-onedrive": "🐬 OneDrive",
+            "geosite-microsoft": "🪟 Microsoft",
+            "geosite-apple": "🍏 Apple",
+            "geosite-telegram": "📲 Telegram",
+            "geosite-tiktok": "🎵 TikTok",
+            "geosite-netflix": "🎥 Netflix",
+            "geosite-paypal": "💶 PayPal",
+            "geosite-steamcn": "🎯 全球直连",
+            "geosite-steam": "🎮 Steam",
+            "geosite-!cn": "🚀 默认代理",
+            "geosite-cn": "🎯 全球直连",
+            "geoip-google": "🍀 Google",
+            "geoip-apple": "🍏 Apple",
+            "geoip-telegram": "📲 Telegram",
+            "geoip-netflix": "🎥 Netflix",
+            "geoip-cn": "🎯 全球直连"
         }
     }
 ]

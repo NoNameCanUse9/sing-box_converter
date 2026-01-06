@@ -122,7 +122,7 @@
                         </div>
                         <div>
                             <h1 class="text-2xl sm:text-3xl font-black text-white tracking-tight">订阅转换器</h1>
-                            <p class="text-blue-100 text-sm opacity-90 mt-0.5">高性能 Sing-box 配置文件生成工具</p>
+                            <p class="text-blue-100 text-sm opacity-90 mt-0.5">Sing-box 配置文件生成工具</p>
                         </div>
                     </div>
 
@@ -601,7 +601,7 @@
                     },
                     body: JSON.stringify({
                         urls: urls,
-                        is_split: document.getElementById('is_split').checked,
+                        is_split: !document.getElementById('is_split').checked,
                         is_customer: document.getElementById('use_custom_config').checked
                     })
                 });
@@ -708,9 +708,9 @@
             try {
                 const formData = new FormData(form);
                 const data = {
-                    urls: formData.get('urls'),
-                    is_split: formData.get('is_split') === 'on',
-                    is_customer: formData.get('is_customer') === 'on'
+                    urls: document.getElementById('urlsInput').value,
+                    is_split: !document.getElementById('is_split').checked,
+                    is_customer: document.getElementById('use_custom_config').checked
                 };
 
                 const response = await fetch('/convert', {

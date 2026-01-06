@@ -1,8 +1,14 @@
+name = "sing-box-converter"
+main = "work.js"
+compatibility_date = "2024-01-01"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "subscribe.db"
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+database_id = ""
 migrations_dir = "./drizzle/migrations"
 
-[text_blobs]
-INDEX_HTML = "./index.html"
+[[rules]]
+type = "Text"
+handlers = ["*.html"]
+globs = ["**/*.html"]

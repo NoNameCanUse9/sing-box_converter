@@ -63,7 +63,7 @@ export default {
         }
 
         // 加载模板 (优先由 sessionId 获取草稿)
-        let template = template;
+        template = templateJson;
         if (is_customerParam && sessionId) {
           console.log("[Customer Check] Loading draft for sessionId:", sessionId);
           const draft = await db
@@ -224,7 +224,7 @@ export default {
           })
           .run();
 
-        const subscriptionUrl = `${url.origin}/sub?id=${newUserId}`;
+        const subscriptionUrl = `${url.origin}/sub?id=${newUserId}${isSplit ? "&is_split=true" : ""}`;
         return new Response(
           JSON.stringify({ subscriptionUrl, config: finalConfig }),
           {
@@ -284,7 +284,7 @@ export default {
             .where(eq(customerConfigs.configHash, user.customerConfigHash))
             .get();
           if (configRecord) {
-            fullConfig = JSON.parse(configRecord.jsonContent);
+            const fullConfig = JSON.parse(configRecord.jsonContent);
             metadata = fullConfig[1];
             if (fullConfig[0]) {
               metadata._base = fullConfig[0];
@@ -616,9 +616,12 @@ function applyRegexFilter(dataList, regexStr) {
     if (!pattern) return dataList;
 
     const regex = new RegExp(pattern, flags.includes("i") ? "iu" : "u");
-    return dataList.filter(
-      (item) => typeof item === "string" && regex.test(item),
-    );
+    return dataList.filter((item) => {
+      if (typeof item !== "string") return false;
+      // 移除所有 Emoji 字符，确保匹配逻辑只针对中英文文本
+      const cleanItem = item.replace(/\p{Extended_Pictographic}/gu, "").trim();
+      return regex.test(cleanItem);
+    });
   } catch (e) {
     console.error("非法正则语法:", e.message, "原字符串:", regexStr);
     return [];
@@ -761,7 +764,10 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
   }
 
   // 遍历 ruleset_outbound_map 中的每一项配置
-  for (const [rulesetId, targetOutbound] of Object.entries(rulesetMap)) {
+  for (const [rulesetId, rawOutbound] of Object.entries(rulesetMap)) {
+    const targetOutbound = Array.isArray(rawOutbound) ? rawOutbound[0] : rawOutbound;
+    if (!targetOutbound) continue;
+
     const existingRule = finalConfig.route.rules.find(
       (rule) =>
         rule.rule_set &&
@@ -912,7 +918,9 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
 
     for (let node of sub) {
       // A. 节点重命名
-      const originalTag = node.tag;
+      let originalTag = node.tag.trim();
+      // 确保国旗 Emoji 与文字之间有空格 (增强在 MikroTik 等环境下的显示兼容性)
+      originalTag = originalTag.replace(/^(\p{Regional_Indicator}{2})([^\s])/u, '$1 $2');
       const finalTag = `${originalTag}${nodeSuffix}`;
       const newNode = { ...node, tag: finalTag };
       finalConfig.outbounds.push(newNode);
@@ -939,6 +947,29 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
       }
     }
   });
+
+  // ==========================================
+  // C-Cleanup. 移除空的地区分组 (Remove empty region groups)
+  // ==========================================
+  // 找出所有非空的地区分组标签
+  const nonEmptyRegionTags = new Set(
+    finalConfig.outbounds
+      .filter(o => (o.type === "selector" || o.type === "urltest") && o.outbounds && o.outbounds.length > 0)
+      .map(o => o.tag)
+  );
+
+  // 过滤掉空的地区组：仅针对 level1 (地区组) 进行清理
+  finalConfig.outbounds = finalConfig.outbounds.filter(o => {
+    // 如果是 Level 1 地区组且为空，则移除
+    if (outboundLevelMap.level1.includes(o.tag) && (!o.outbounds || o.outbounds.length === 0)) {
+      return false;
+    }
+    return true;
+  });
+
+  // 同步更新 levelMap，确保后续 Section D/E 不会引用已删除的分组
+  outboundLevelMap.level1 = outboundLevelMap.level1.filter(tag => nonEmptyRegionTags.has(tag));
+
   // ==========================================
   // D. 自动选择逻辑：将地区组加入自动选择
   // ==========================================
@@ -952,7 +983,10 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
       if (autoGroup) {
         if (!autoGroup.outbounds) autoGroup.outbounds = [];
         classifiedGroups.regionList.forEach((regionName) => {
-          autoGroup.outbounds.push(`${regionName}${groupSuffix}`);
+          const regionTag = `${regionName}${groupSuffix}`;
+          if (nonEmptyRegionTags.has(regionTag)) {
+            autoGroup.outbounds.push(regionTag);
+          }
         });
       }
     });
@@ -961,7 +995,9 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
     if (autoGroup) {
       if (!autoGroup.outbounds) autoGroup.outbounds = [];
       classifiedGroups.regionList.forEach((regionName) => {
-        autoGroup.outbounds.push(regionName);
+        if (nonEmptyRegionTags.has(regionName)) {
+          autoGroup.outbounds.push(regionName);
+        }
       });
     }
   }
@@ -992,6 +1028,14 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
       });
     }
   });
+
+  // 置顶 🚀 默认代理
+  const defaultProxyTag = "🚀 默认代理";
+  const defaultProxyIndex = finalConfig.outbounds.findIndex(o => o.tag === defaultProxyTag);
+  if (defaultProxyIndex > -1) {
+    const [defaultProxy] = finalConfig.outbounds.splice(defaultProxyIndex, 1);
+    finalConfig.outbounds.unshift(defaultProxy);
+  }
 
   return finalConfig;
 }
