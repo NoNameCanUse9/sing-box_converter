@@ -1833,9 +1833,24 @@
                         const parsed = JSON.parse(jsonString);
                         const index = config.value[0].outbounds.findIndex(o => o.tag === tag);
                         if (index !== -1) {
+                            // Bug Fix: 如果在 JSON 中修改了 tag 名称，迁移相关状态，防止编辑框自动收起
+                            if (parsed.tag && parsed.tag !== tag) {
+                                // 1. 迁移展开状态
+                                if (uiState.value.expandedOutbounds[tag]) {
+                                    uiState.value.expandedOutbounds[parsed.tag] = true;
+                                    delete uiState.value.expandedOutbounds[tag];
+                                }
+                                // 2. 迁移分组状态
+                                if (outboundGroupMap.value[tag]) {
+                                    const group = outboundGroupMap.value[tag];
+                                    delete outboundGroupMap.value[tag];
+                                    outboundGroupMap.value[parsed.tag] = group;
+                                }
+                            }
                             config.value[0].outbounds[index] = parsed;
                         }
                     } catch (e) {
+                        // JSON 格式无效时忽略，不更新
                         console.error('Invalid JSON:', e);
                     }
                 };
