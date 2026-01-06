@@ -156,29 +156,67 @@ export default {
           });
         }
 
-        let template = templateJson;
+        let template = Array.isArray(templateJson) ? [...templateJson] : [{}, {}];
         let userHash = null;
 
         if (isCustomer && sessionId) {
+          console.log(`[/sub POST] Processing custom config for session: ${sessionId}`);
           // 1. 尝试从草稿表读取
           const draft = await db
             .select()
             .from(draftConfigs)
             .where(eq(draftConfigs.sessionId, sessionId))
             .get();
-          if (draft) {
-            template = JSON.parse(draft.jsonContent);
-          }
 
-          // 2. 获取持久化哈希
-          const sessionUser = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, sessionId))
-            .get();
-          if (sessionUser) {
-            userHash = sessionUser.customerConfigHash;
+          if (draft) {
+            const configJson = draft.jsonContent;
+            try {
+              const parsed = JSON.parse(configJson);
+              if (Array.isArray(parsed) && parsed.length >= 2) {
+                template = parsed;
+                // 2. 计算当前配置的哈希并持久化
+                userHash = await sha256Hash(configJson);
+                console.log(`[/sub POST] Draft found, config hash: ${userHash}`);
+
+                // 检查并保存到 customerConfigs (去重存储)
+                const existingPersisted = await db
+                  .select()
+                  .from(customerConfigs)
+                  .where(eq(customerConfigs.configHash, userHash))
+                  .get();
+
+                if (!existingPersisted) {
+                  await db.insert(customerConfigs)
+                    .values({
+                      configHash: userHash,
+                      jsonContent: configJson
+                    })
+                    .run();
+                  console.log("[Persistence] Saved new custom config to customerConfigs table.");
+                }
+              } else {
+                console.warn("[/sub POST] Draft exists but has invalid format (not 2-element array)");
+              }
+            } catch (e) {
+              console.error("[/sub POST] Failed to parse draft config:", e);
+            }
+          } else {
+            console.log(`[/sub POST] No draft found for session ${sessionId}. Checking existing user records...`);
+            // 如果没有草稿，尝试从当前 Session ID 关联的旧用户记录获取哈希
+            const sessionUser = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, sessionId))
+              .get();
+            if (sessionUser && sessionUser.customerConfigHash && sessionUser.customerConfigHash !== "null") {
+              userHash = sessionUser.customerConfigHash;
+              console.log(`[/sub POST] Found existing hash from session user: ${userHash}`);
+            } else {
+              console.log("[/sub POST] No existing user record or hash found for this session.");
+            }
           }
+        } else {
+          if (isCustomer) console.warn("[/sub POST] isCustomer true but sessionId is null or expired.");
         }
 
         // 生成配置
@@ -276,18 +314,21 @@ export default {
         }
 
         // 3. 获取自定义配置（可选）
-        let metadata = null;
-        if (user.customerConfigHash) {
+        let template = Array.isArray(templateJson) ? [...templateJson] : [{}, {}];
+        if (user.customerConfigHash && user.customerConfigHash !== "null") {
           const configRecord = await db
             .select()
             .from(customerConfigs)
             .where(eq(customerConfigs.configHash, user.customerConfigHash))
             .get();
-          if (configRecord) {
-            const fullConfig = JSON.parse(configRecord.jsonContent);
-            metadata = fullConfig[1];
-            if (fullConfig[0]) {
-              metadata._base = fullConfig[0];
+          if (configRecord && configRecord.jsonContent) {
+            try {
+              const parsed = JSON.parse(configRecord.jsonContent);
+              if (Array.isArray(parsed) && parsed.length >= 2) {
+                template = parsed;
+              }
+            } catch (e) {
+              console.error("Failed to parse custom config:", e);
             }
           }
         }
@@ -296,12 +337,12 @@ export default {
         const subscriptionInputs = urlsProcessed.map((url) => ({ url }));
         const proxyData = await fetchAndParseProxies(
           subscriptionInputs,
-          metadata,
+          template[1] || {},
         );
         const finalConfig = await generateSingboxConfig(
           proxyData,
           isSplitParam,
-          metadata,
+          template,
         );
 
         return new Response(JSON.stringify(finalConfig, null, 2), {
@@ -684,7 +725,17 @@ async function fetchAndParseProxies(subscriptionInputs, metadataParam = null) {
       if (subInput.content) {
         text = subInput.content;
       } else {
-        const res = await fetch(subUrl, {
+        // 处理 URL：编码非 ASCII 字符，避免 fetch 报 400
+        let finalUrl = subUrl;
+        try {
+          const urlObj = new URL(subUrl);
+          // 如果 URL 中包含非 ASCII 字符（如中文），URL 构造函数会自动编码 pathname，但 searchParams 可能需要处理
+          finalUrl = urlObj.toString();
+        } catch (e) {
+          console.warn(`Invalid URL: ${subUrl}`);
+        }
+
+        const res = await fetch(finalUrl, {
           headers: {
             "User-Agent": "Clash/1.0", // 伪装成 Clash 客户端，通常能获得更好的兼容性
           },
@@ -1054,8 +1105,8 @@ function getSessionId(request) {
     const ts = parseInt(timestamp);
     if (!isNaN(ts)) {
       // 3 Hours Expiry check
-      if (Date.now() - ts > 3 * 60 * 60 * 1000) {
-        console.log("Session expired:", rawId);
+      if (Date.now() - ts > 24 * 60 * 60 * 1000) {
+        console.log("Session expired (24h):", rawId);
         return null; // Expired
       }
     }

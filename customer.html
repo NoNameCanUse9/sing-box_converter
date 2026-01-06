@@ -581,9 +581,15 @@
                                 </div>
                                 <div v-show="uiState.expandedOutbounds[outbound.tag]" class="px-3 pb-3">
                                     <textarea :value="JSON.stringify(outbound, null, 2)"
-                                        @input="updateOutbound(outbound.tag, $event.target.value)"
                                         class="w-full h-48 bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors font-mono text-xs"
                                         placeholder="JSON configuration"></textarea>
+                                    <div class="mt-2 flex justify-end">
+                                        <button
+                                            @click="confirmCustomOutbound(outbound.tag, $event.target.parentElement.previousElementSibling.value)"
+                                            class="px-4 py-2 bg-primary dark:bg-primary-dark text-white rounded-md3 text-xs font-bold shadow-md3-1 hover:shadow-md3-2 transition-all">
+                                            确定并保存（进入未分类）
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <button @click="createNewOutbound"
@@ -1483,9 +1489,12 @@
                         else if (basicKeywords.some(keyword => tag.includes(keyword))) {
                             outboundGroupMap.value[tag] = '基本分组';
                         }
-                        // 其他都归入应用规则
+                        // 其他都归入应用规则 (仅针对选择器组，单节点不自动分类)
                         else {
-                            outboundGroupMap.value[tag] = '应用规则';
+                            const groupingTypes = ['selector', 'urltest', 'fallback', 'balancer'];
+                            if (groupingTypes.includes(outbound.type)) {
+                                outboundGroupMap.value[tag] = '应用规则';
+                            }
                         }
                     });
                 };
@@ -1827,33 +1836,62 @@
                     }
                 };
 
+                // 确认并保存自定义 Outbound
+                const confirmCustomOutbound = (oldTag, jsonString) => {
+                    try {
+                        const parsed = JSON.parse(jsonString);
+                        if (!parsed.tag || parsed.tag.trim() === "") {
+                            alert("Tag 不能为空");
+                            return;
+                        }
+
+                        // 1. 更新主配置中的数据
+                        const index = config.value[0].outbounds.findIndex(o => o.tag === oldTag);
+                        if (index === -1) {
+                            alert("未找到原节点");
+                            return;
+                        }
+
+                        // 2. 如果修改了 Tag，迁移关联状态
+                        if (parsed.tag !== oldTag) {
+                            if (outboundGroupMap.value[oldTag]) {
+                                outboundGroupMap.value[parsed.tag] = outboundGroupMap.value[oldTag];
+                            }
+                            Object.keys(ruleset_outbound_map.value).forEach(key => {
+                                if (ruleset_outbound_map.value[key] === oldTag) {
+                                    ruleset_outbound_map.value[key] = parsed.tag;
+                                }
+                            });
+                        }
+
+                        // 更新数据对象
+                        config.value[0].outbounds[index] = parsed;
+
+                        // 3. 【核心】将节点从自定义移动到“未分类”
+                        delete outboundGroupMap.value[parsed.tag];
+                        delete outboundGroupMap.value[oldTag];
+
+                        // 4. 收起并清理状态
+                        delete uiState.value.expandedOutbounds[oldTag];
+                        delete uiState.value.expandedOutbounds[parsed.tag];
+
+                        alert(`已保存 "${parsed.tag}" 并移动到未分类列表`);
+                    } catch (e) {
+                        alert("JSON 格式错误: " + e.message);
+                    }
+                };
+
                 // 更新 Outbound JSON
                 const updateOutbound = (tag, jsonString) => {
                     try {
                         const parsed = JSON.parse(jsonString);
                         const index = config.value[0].outbounds.findIndex(o => o.tag === tag);
                         if (index !== -1) {
-                            // Bug Fix: 如果在 JSON 中修改了 tag 名称，迁移相关状态，防止编辑框自动收起
-                            if (parsed.tag && parsed.tag !== tag) {
-                                // 1. 迁移展开状态
-                                if (uiState.value.expandedOutbounds[tag]) {
-                                    uiState.value.expandedOutbounds[parsed.tag] = true;
-                                    delete uiState.value.expandedOutbounds[tag];
-                                }
-                                // 2. 迁移分组状态
-                                if (outboundGroupMap.value[tag]) {
-                                    const group = outboundGroupMap.value[tag];
-                                    delete outboundGroupMap.value[tag];
-                                    outboundGroupMap.value[parsed.tag] = group;
-                                }
-                            }
                             config.value[0].outbounds[index] = parsed;
                         }
-                    } catch (e) {
-                        // JSON 格式无效时忽略，不更新
-                        console.error('Invalid JSON:', e);
-                    }
+                    } catch (e) { }
                 };
+
 
                 // 创建新的自定义 Outbound
                 const createNewOutbound = () => {
@@ -2180,7 +2218,7 @@
                     filteredInboundTypes, selectInboundType,
                     getOutboundsByGroup, getUncategorizedOutbounds,
                     showAddOutboundModal, addToGroup, removeFromGroup,
-                    toggleOutboundExpand, updateOutbound,
+                    toggleOutboundExpand, updateOutbound, confirmCustomOutbound,
                     createNewOutbound, deleteCustomOutbound,
                     getRuleSets, getAvailableOutbounds, getRulesetOutbounds,
                     bindOutboundToRuleset, unbindOutboundFromRuleset, bindManualOutbound,
