@@ -737,12 +737,19 @@ async function fetchAndParseProxies(subscriptionInputs, metadataParam = null) {
 
         const res = await fetch(finalUrl, {
           headers: {
-            "User-Agent": "Clash/1.0", // 伪装成 Clash 客户端，通常能获得更好的兼容性
+            "User-Agent": "ClashMeta/1.18.0 ",
           },
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        console.log(`[Fetch Debug] Sub ${i + 1}: URL=${finalUrl.substring(0, 60)}..., Status=${res.status}, Type=${res.headers.get("content-type")}`);
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => "N/A");
+          throw new Error(`HTTP ${res.status}: ${errorText.substring(0, 50)}`);
+        }
+
         text = await res.text();
-        console.log(`[Fetched Content Preview] ${subUrl.substring(0, 30)}... : ${text.substring(0, 100).replace(/\n/g, "\\n")}`);
+        console.log(`[Fetched Content] Sub ${i + 1}: Length=${text.length}, Preview=${text.substring(0, 80).replace(/\n/g, "\\n")}...`);
 
         // 尝试对 Fetch 到的内容解码，防止某些订阅源返回的是 URL 编码的内容
         try {
@@ -843,7 +850,7 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
   const regionList = []; // 地区分类
   const basicList = []; // 基本分组
   const ruleList = []; // 应用规则
-
+  const customList = []; // 自定义分组
   Object.entries(metadata.outboundGroupMap).forEach(([groupName, category]) => {
     switch (category) {
       case "地区分类":
@@ -856,7 +863,6 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
         // 已通过 levelMap 逻辑处理，此处仅需标记为已知
         break;
       default:
-        console.warn(`未知的分类: ${category} - ${groupName}`);
         break;
     }
   });
@@ -876,6 +882,17 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
   // 1. 备份并清理模板中的原始出站组（我们将重新构建这个数组）
   const templateOutbounds = [...finalConfig.outbounds];
   finalConfig.outbounds = [];
+
+  // 这里的逻辑：如果 template 里的 tag 在 metadata.outboundGroupMap 里找不到，就存入 customList
+  templateOutbounds.forEach(o => {
+    if (!metadata.outboundGroupMap || !metadata.outboundGroupMap[o.tag]) {
+      // 排除掉一些固有的特殊标签（可选，但为了不出错，我们只存 map 里没有的）
+      const systemTags = ["direct", "block", "dns-out", "bypass"];
+      if (!systemTags.includes(o.tag)) {
+        customList.push(o);
+      }
+    }
+  });
 
   // 获取原始的基础标签列表
   const baseBasicTags = ["♻️ 自动选择", "🐸 手动选择"];
@@ -944,6 +961,18 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
     }
   });
 
+  // 把自定义节点加回去
+  const groupingTypes = ["selector", "urltest", "fallback", "balancer"];
+  const customNodeTags = [];
+
+  customList.forEach(o => {
+    finalConfig.outbounds.push(JSON.parse(JSON.stringify(o)));
+    // 如果不是分组类型，记录下它的 tag，稍后加入手动/全局组
+    if (!groupingTypes.includes(o.type)) {
+      customNodeTags.push(o.tag);
+    }
+  });
+
   // ==========================================
   // 3. 节点预处理与归类 (Node Processing)
   // ==========================================
@@ -959,13 +988,27 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
     const groupSuffix = (isSplitParam && isMultiSub) ? `-${n}` : "";
 
     // 定位“手动选择”分组
-    const manualRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("手动选择"));
+    const manualRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("手动选择")) || "🐸 手动选择";
     const manualTag = isSplitParam ? `${manualRef}${groupSuffix}` : manualRef;
     let manualGroup = finalConfig.outbounds.find(o => o.tag === manualTag);
 
     // 定位“全局代理”分组（全局通常不带后缀）
-    const globalRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("全局代理"));
+    const globalRef = Object.keys(metadata.outboundGroupMap).find(k => k.includes("全局代理")) || "🌍 全局代理";
     let globalGroup = finalConfig.outbounds.find(o => o.tag === globalRef);
+
+    // 先把自定义节点加进去
+    if (manualGroup) {
+      if (!manualGroup.outbounds) manualGroup.outbounds = [];
+      customNodeTags.forEach(tag => {
+        if (!manualGroup.outbounds.includes(tag)) manualGroup.outbounds.push(tag);
+      });
+    }
+    if (globalGroup) {
+      if (!globalGroup.outbounds) globalGroup.outbounds = [];
+      customNodeTags.forEach(tag => {
+        if (!globalGroup.outbounds.includes(tag)) globalGroup.outbounds.push(tag);
+      });
+    }
 
     for (let node of sub) {
       // A. 节点重命名

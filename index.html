@@ -202,7 +202,7 @@
                                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">启用高级模板</p>
                                 </div>
                             </label>
-                            <a href="customer.html" target="_blank" id="customConfigTrigger"
+                            <a href="customer.html" id="customConfigTrigger"
                                 class="p-2 text-purple-400 hover:text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-full transition-all"
                                 title="编辑高级配置">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,8 +445,8 @@
         // 4. Custom Config Modal
         customConfigTrigger.addEventListener('click', (e) => {
             e.preventDefault();
-            // Open customer.html in a new tab
-            window.open('customer.html', '_blank');
+            // Redirect to customer.html directly
+            window.location.href = 'customer.html';
         });
         /* 
         // Deprecated Modal Logic

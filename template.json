@@ -9,68 +9,40 @@
         "dns": {
             "servers": [
                 {
-                    "tag": "local",
+                    "tag": "default",
                     "type": "udp",
-                    "server": "223.5.5.5",
-                    "server_port": 53,
-                    "detour": "🎯 全球直连"
+                    "server": "223.5.5.5"
                 }, {
-                    "tag": "public",
+                    "tag": "local",
                     "type": "https",
-                    "server": "dns.alidns.com",
-                    "server_port": 443,
-                    "strategy": "prefer_ipv4",
-                    "detour": "🎯 全球直连"
+                    "server": "223.5.5.5"
                 }, {
                     "tag": "foreign",
                     "type": "https",
                     "server": "1.1.1.1",
-                    "server_port": 443,
                     "detour": "🚀 默认代理"
                 }, {
                     "tag": "fakeip",
                     "type": "fakeip",
-                    "inet4_range": "198.18.0.0/15",
-                    "inet6_range": "fc00::/18"
+                    "inet4_range": "198.18.0.0/15"
                 }
             ],
             "rules": [
                 {
-                    "domain": [
-                        "dns.alidns.com",
-                        "doh.pub",
-                        "dot.pub",
-                        "dns.google",
-                        "cloudflare-dns.com"
-                    ],
-                    "server": "local"
-                },
-                {
-                    "clash_mode": "direct",
-                    "server": "public"
-                },
-                {
-                    "clash_mode": "global",
-                    "server": "fakeip"
-                },
-                {
-                    "query_type": "HTTPS",
-                    "action": "reject"
-                }, {
-                    "rule_set": "geosite-fakeipfilter",
-                    "server": "public"
-                }, {
-                    "query_type": [
-                        "A", "AAAA"
-                    ],
-                    "server": "fakeip",
-                    "rewrite_ttl": 1
-                }, {
                     "rule_set": "geosite-cn",
-                    "server": "public"
+                    "server": "local"
+                }, {
+                    "clash_mode": "direct",
+                    "server": "local"
+                }, {
+                    "clash_mode": "global",
+                    "server": "foreign"
+                }, {
+                    "rule_set": "geosite-!cn",
+                    "server": "foreign"
                 }
             ],
-            "final": "foreign",
+            "final": "local",
             "client_subnet": "223.5.5.0/24",
             "strategy": "prefer_ipv4",
             "independent_cache": true,
@@ -235,11 +207,7 @@
                 "outbounds": []
             }, {
                 "tag": "🎯 全球直连",
-                "type": "direct",
-                "domain_resolver": {
-                    "server": "local",
-                    "strategy": "prefer_ipv4"
-                }
+                "type": "direct"
             }, {
                 "tag": "🐸 手动选择",
                 "type": "selector",
@@ -247,6 +215,9 @@
             }
         ],
         "route": {
+            "default_domain_resolver": {
+                "server": "default"
+            },
             "rules": [
                 {
                     "action": "sniff",
@@ -473,6 +444,7 @@
             "final": "🐠 漏网之鱼",
             "auto_detect_interface": true
         },
+
         "experimental": {
             "cache_file": {
                 "enabled": true,
@@ -486,7 +458,9 @@
                 "external_ui_download_detour": "🎯 全球直连",
                 "default_mode": "rule"
             }
-        }
+        },
+        "endpoints": []
+
     }, {
         "githubProxy": true,
         "githubProxyUrl": "https://gh-proxy.com/",

@@ -1029,6 +1029,84 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- Endpoints Section -->
+                            <div id="section-endpoint" class="mb-6 scroll-mt-6">
+                                <div class="flex items-center gap-3 mb-4">
+                                    <span class="text-3xl">📍</span>
+                                    <h2 class="text-2xl font-bold text-primary dark:text-primary-dark">Endpoints</h2>
+                                </div>
+
+                                <div class="mb-4">
+                                    <button @click="uiState.endpointsExpanded = !uiState.endpointsExpanded"
+                                        class="w-full flex items-center justify-between mb-2 group">
+                                        <h3
+                                            class="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">
+                                            WireGuard / Tailscale (1.11.0+)
+                                        </h3>
+                                        <svg :class="['w-4 h-4 transition-transform duration-200 text-outline dark:text-outline-dark', uiState.endpointsExpanded ? 'rotate-180' : '']"
+                                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M19 9l-7 7-7-7"></path>
+                                        </svg>
+                                    </button>
+                                    <div class="border-t border-outline-variant dark:border-outline-dark-variant"></div>
+                                </div>
+
+                                <div v-show="uiState.endpointsExpanded" class="space-y-2 mb-6">
+                                    <div v-for="(endpoint, index) in config[0].endpoints" :key="'endpoint-' + index"
+                                        class="rounded-md3 border border-outline-variant dark:border-outline-dark-variant bg-surface-container dark:bg-surface-dark-container shadow-md3-1 hover:shadow-md3-2 transition-all">
+
+                                        <!-- Header -->
+                                        <div class="p-3 flex items-center justify-between cursor-pointer group"
+                                            @click="toggleEndpointExpand(endpoint.tag)">
+                                            <div class="flex items-center gap-2 flex-1">
+                                                <span class="font-bold text-sm">{{ endpoint.tag || '未命名端点' }}</span>
+                                                <span
+                                                    class="text-xs px-2 py-0.5 rounded-md3-full bg-primary-container dark:bg-primary-dark-container">
+                                                    {{ endpoint.type }}
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button @click.stop="deleteEndpoint(index)"
+                                                    class="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-md3-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all">
+                                                    <span class="text-sm">🗑️</span>
+                                                </button>
+                                                <svg :class="['w-4 h-4 transition-transform duration-200 text-outline', uiState.expandedEndpoints[endpoint.tag] ? 'rotate-180' : '']"
+                                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                                </svg>
+                                            </div>
+                                        </div>
+
+                                        <!-- Editor Body -->
+                                        <div v-show="uiState.expandedEndpoints[endpoint.tag]" class="px-3 pb-3">
+                                            <textarea :value="JSON.stringify(endpoint, null, 2)"
+                                                class="w-full h-48 bg-surface-container-high dark:bg-surface-dark-container-high p-3 rounded-md3 border border-outline-variant dark:border-outline-dark-variant focus:border-primary dark:focus:border-primary-dark focus:outline-none transition-colors font-mono text-xs"
+                                                placeholder="JSON configuration"></textarea>
+                                            <div class="mt-2 flex justify-end">
+                                                <button
+                                                    @click="confirmEndpointSave(endpoint.tag, $event.target.parentElement.previousElementSibling.value)"
+                                                    class="px-4 py-2 bg-primary dark:bg-primary-dark text-white rounded-md3 text-xs font-bold shadow-md3-1 hover:shadow-md3-2 transition-all">
+                                                    确定并保存
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button @click="addEndpoint"
+                                        class="w-full p-3 rounded-md3 bg-primary dark:bg-primary-dark hover:shadow-md3-3 text-white font-medium transition-all flex items-center justify-center gap-2">
+                                        <span class="text-lg">+</span>
+                                        <span>创建新 Endpoint</span>
+                                    </button>
+
+                                    <div v-if="!config[0].endpoints?.length"
+                                        class="text-center py-4 text-sm text-outline dark:text-outline-dark italic">
+                                        尚未添加任何端点配置（从 1.11.0 起推荐使用）
+                                    </div>
+                                </div>
+                            </div>
+
                             <div id="section-diy" class="mb-6 scroll-mt-6">
                                 <h2
                                     class="text-2xl font-bold mb-4 text-primary dark:text-primary-dark flex items-center gap-2">
@@ -1323,7 +1401,7 @@
                     { id: 'dns', name: 'DNS Settings', icon: '🌐' },
                     { id: 'inbound', name: 'Inbounds', icon: '📥' },
                     { id: 'outbound', name: 'Outbounds', icon: '📤️' },
-
+                    { id: 'endpoint', name: 'Endpoints', icon: '📍' },
                     { id: 'route', name: 'Route', icon: '🧭' },
                     { id: 'experiments', name: 'Experiments', icon: '🧪' },
                     { id: 'filter', name: 'Filter', icon: '🕸' },
@@ -1368,6 +1446,11 @@
                             config.value = finalData;
                         } else {
                             config.value[0] = finalData;
+                        }
+
+                        // 确保 config[0].endpoints 存在且为数组 (1.11.0+)
+                        if (!config.value[0].endpoints || typeof config.value[0].endpoints !== 'object' || !Array.isArray(config.value[0].endpoints)) {
+                            config.value[0].endpoints = [];
                         }
 
                         // 确保 config[1] (应用设置) 及其映射表存在
@@ -1423,6 +1506,8 @@
                     outboundBasicExpanded: true,    // 基本分组展开状态
                     outboundCustomExpanded: true,   // 自定义 Outbound 展开状态
                     expandedOutbounds: {},          // 记录哪些 outbound 是展开的
+                    endpointsExpanded: true,        // Endpoints 区域展开状态
+                    expandedEndpoints: {},          // 记录哪些 endpoint 是展开的
                     expandedRuleSets: {},           // 记录哪些 rule set 是展开的
                     ruleSetsExpanded: true,         // Rule Sets 区域展开状态
                     showInboundTypeModal: false,
@@ -1749,6 +1834,76 @@
                     } catch (e) {
                         // JSON 格式错误，不更新
                         console.error('Invalid JSON:', e);
+                    }
+                };
+                // ==========================
+                // Endpoints 管理 (1.11.0+)
+                // ==========================
+                const addEndpoint = () => {
+                    if (!config.value[0].endpoints) {
+                        config.value[0].endpoints = [];
+                    }
+                    const timestamp = Date.now();
+                    const newEndpoint = {
+                        type: "wireguard",
+                        tag: `wg-${timestamp}`,
+                        system: false,
+                        address: ["10.0.0.2/32"]
+                    };
+                    config.value[0].endpoints.push(newEndpoint);
+                    uiState.value.expandedEndpoints[newEndpoint.tag] = true;
+                };
+
+                const deleteEndpoint = (index) => {
+                    if (confirm('确定要删除这个端点配置吗？')) {
+                        config.value[0].endpoints.splice(index, 1);
+                    }
+                };
+
+                const confirmEndpointSave = (oldTag, jsonString) => {
+                    try {
+                        const parsed = JSON.parse(jsonString);
+                        if (!parsed.tag || parsed.tag.trim() === "") {
+                            alert("Tag 不能为空");
+                            return;
+                        }
+
+                        const index = config.value[0].endpoints.findIndex(e => e.tag === oldTag);
+                        if (index === -1) {
+                            alert("未找到原端点");
+                            return;
+                        }
+
+                        // 如果修改了 Tag，更新 Outbounds 中的引用
+                        if (parsed.tag !== oldTag) {
+                            if (config.value[0].outbounds) {
+                                config.value[0].outbounds.forEach(o => {
+                                    if (o.endpoint === oldTag) {
+                                        o.endpoint = parsed.tag;
+                                    }
+                                });
+                            }
+                        }
+
+                        config.value[0].endpoints[index] = parsed;
+
+                        // 清理展开状态并重新以新 tag 展开（如果 tag 变了）
+                        if (parsed.tag !== oldTag) {
+                            delete uiState.value.expandedEndpoints[oldTag];
+                            uiState.value.expandedEndpoints[parsed.tag] = true;
+                        }
+
+                        alert(`已保存端点 "${parsed.tag}"`);
+                    } catch (e) {
+                        alert("JSON 格式错误: " + e.message);
+                    }
+                };
+
+                const toggleEndpointExpand = (tag) => {
+                    if (uiState.value.expandedEndpoints[tag]) {
+                        delete uiState.value.expandedEndpoints[tag];
+                    } else {
+                        uiState.value.expandedEndpoints[tag] = true;
                     }
                 };
 
@@ -2224,6 +2379,7 @@
                     bindOutboundToRuleset, unbindOutboundFromRuleset, bindManualOutbound,
                     toggleRuleSetExpand, updateRuleSet,
                     createNewRuleSet, deleteRuleSet,
+                    addEndpoint, deleteEndpoint, confirmEndpointSave, toggleEndpointExpand,
                     addFilterRule, removeFilterRule, addExcludeRule, removeExcludeRule,
                     openFilterOutboundSelector, handleOutboundSelection,
                     currentDiySection, diyError, diyContent,
