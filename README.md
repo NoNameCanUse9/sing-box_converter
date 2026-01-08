@@ -1,6 +1,12 @@
 # Sing-box Config Partner 🛠️
 
-一个强大且灵活的 Sing-box 配置生成器与管理工具，专为 Cloudflare Workers 设计。支持最新的 Sing-box (1.11+) 语法规范，提供直观的 Web UI 进行配置调整。
+ 一个强大且灵活的 Sing-box 配置生成器与管理工具，专为 Cloudflare Workers 设计。支持最新的 Sing-box (1.11+) 语法规范，提供直观的 Web UI 进行配置调整。
+
+## 📸 预览
+
+| 订阅转换主页 | 高级可视化编辑器 |
+| :---: | :---: |
+| ![主页预览](./img/index.png) | ![编辑器预览](./img/customer.png) |
 
 ## 🌟 核心特性
 
