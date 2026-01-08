@@ -31,10 +31,19 @@
                 {
                     "rule_set": "geosite-cn",
                     "server": "local"
-                }, {
+                },
+                {
                     "clash_mode": "direct",
                     "server": "local"
-                }, {
+                },
+                {
+                    "query_type": [
+                        "A", "AAAA"
+                    ],
+                    "server": "fakeip"
+                },
+
+                {
                     "clash_mode": "global",
                     "server": "foreign"
                 }, {
