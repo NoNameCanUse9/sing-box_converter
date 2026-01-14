@@ -796,6 +796,7 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
   const configBase = templateConfig[0];
   const metadata = templateConfig[1];
   let finalConfig = JSON.parse(JSON.stringify(configBase));
+  if (!finalConfig.endpoints) finalConfig.endpoints = [];
   const { allProxyNodes } = proxyData; // Now correctly destructuring from { allProxyNodes, hashes }
 
   // ==========================================
@@ -966,10 +967,25 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
   const customNodeTags = [];
 
   customList.forEach(o => {
-    finalConfig.outbounds.push(JSON.parse(JSON.stringify(o)));
+    let newNode = JSON.parse(JSON.stringify(o));
+    // --- 重点改动：把 wireguard 协议分到 endpoint ---
+    if (newNode.type === 'wireguard' && newNode.server) {
+      const epTag = `ep-${newNode.tag}`;
+      finalConfig.endpoints.push({
+        tag: epTag,
+        type: 'wireguard',
+        address: newNode.server,
+        port: newNode.server_port
+      });
+      newNode.endpoint = epTag;
+      delete newNode.server;
+      delete newNode.server_port;
+    }
+    finalConfig.outbounds.push(newNode);
+
     // 如果不是分组类型，记录下它的 tag，稍后加入手动/全局组
-    if (!groupingTypes.includes(o.type)) {
-      customNodeTags.push(o.tag);
+    if (!groupingTypes.includes(newNode.type)) {
+      customNodeTags.push(newNode.tag);
     }
   });
 
@@ -1010,16 +1026,38 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
       });
     }
 
+    // --- 重点改动：在 node 合并到 outbound 前把 node 循环加入 ---
+    // A. 节点预处理：统一重命名并处理协议转换（如 WireGuard -> Endpoints）
     for (let node of sub) {
-      // A. 节点重命名
       let originalTag = node.tag.trim();
-      // 确保国旗 Emoji 与文字之间有空格 (增强在 MikroTik 等环境下的显示兼容性)
+      // 确保国旗 Emoji 与文字之间有空格
       originalTag = originalTag.replace(/^(\p{Regional_Indicator}{2})([^\s])/u, '$1 $2');
       const finalTag = `${originalTag}${nodeSuffix}`;
-      const newNode = { ...node, tag: finalTag };
-      finalConfig.outbounds.push(newNode);
+      let newNode = { ...node, tag: finalTag };
 
-      // B. 填充手动选择和全局代理
+      // --- 重点改动：把 wireguard 协议分到 endpoint ---
+      if (newNode.type === 'wireguard' && newNode.server) {
+        const epTag = `ep-${finalTag}`;
+        finalConfig.endpoints.push({
+          tag: epTag,
+          type: 'wireguard',
+          address: newNode.server,
+          port: newNode.server_port
+        });
+        newNode.endpoint = epTag;
+        delete newNode.server;
+        delete newNode.server_port;
+      }
+      finalConfig.outbounds.push(newNode);
+    }
+
+    // B. 节点填充逻辑：将已加入的节点标签归类到各 Outbound 组
+    for (let node of sub) {
+      let originalTag = node.tag.trim();
+      originalTag = originalTag.replace(/^(\p{Regional_Indicator}{2})([^\s])/u, '$1 $2');
+      const finalTag = `${originalTag}${nodeSuffix}`;
+
+      // 填充手动选择和全局代理
       if (manualGroup) {
         if (!manualGroup.outbounds) manualGroup.outbounds = [];
         manualGroup.outbounds.push(finalTag);
@@ -1029,7 +1067,7 @@ async function generateSingboxConfig(proxyData, isSplitParam, templateConfig) {
         globalGroup.outbounds.push(finalTag);
       }
 
-      // C. 地区分类匹配
+      // 地区分类匹配
       for (const filter of countryFilters) {
         const targetGroupTag = `${filter.outbound}${groupSuffix}`;
         let group = finalConfig.outbounds.find(o => o.tag === targetGroupTag);
